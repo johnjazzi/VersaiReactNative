@@ -23,9 +23,6 @@ sh ./models/download-ggml-model.sh base
 ```
 
 
-
-
-
 ```
 yarn install
 cd ios
@@ -34,6 +31,8 @@ cd ..
 ```
 
 ```
-npx expo prebuild
-yarn ios #need to run this and do a full build for whisper to work
+# TO RUN ON DEVICE
+npx expo prebuild --clean
+npx expo run:ios --device --configuration Release
 ```
+

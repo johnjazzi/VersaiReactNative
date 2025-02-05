@@ -33,17 +33,17 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        setLoadingStatus('Loading Romance to English tokenizer...');
-        setLoadingProgress(0);
-        const sourceUrls_rom_to_en = {
-          tokenizerJSON: "https://huggingface.co/Xenova/opus-mt-ROMANCE-en/resolve/main/tokenizer.json?download=true",
-          tokenizerConfig: "https://huggingface.co/Xenova/opus-mt-ROMANCE-en/resolve/main/tokenizer_config.json?download=true"
-        }
+        // setLoadingStatus('Loading Romance to English tokenizer...');
+        // setLoadingProgress(0);
+        // const sourceUrls_rom_to_en = {
+        //   tokenizerJSON: "https://huggingface.co/Xenova/opus-mt-ROMANCE-en/resolve/main/tokenizer.json?download=true",
+        //   tokenizerConfig: "https://huggingface.co/Xenova/opus-mt-ROMANCE-en/resolve/main/tokenizer_config.json?download=true"
+        // }
 
-        const sourceUrls_en_to_rom = {
-          tokenizerJSON: "https://huggingface.co/Xenova/opus-mt-en-ROMANCE/resolve/main/tokenizer.json?download=true",
-          tokenizerConfig: "https://huggingface.co/Xenova/opus-mt-en-ROMANCE/resolve/main/tokenizer_config.json?download=true"
-        }
+        // const sourceUrls_en_to_rom = {
+        //   tokenizerJSON: "https://huggingface.co/Xenova/opus-mt-en-ROMANCE/resolve/main/tokenizer.json?download=true",
+        //   tokenizerConfig: "https://huggingface.co/Xenova/opus-mt-en-ROMANCE/resolve/main/tokenizer_config.json?download=true"
+        // }
 
         // const tokenizer_rom_to_en = await TokenizerLoader.fromPreTrainedUrls(
         //   sourceUrls_rom_to_en
@@ -59,7 +59,6 @@ export default function App() {
         // setTokenizerRomToEn(tokenizer_rom_to_en);
         // setTokenizerEnToRom(tokenizer_en_to_rom);
 
- 
 
         setLoadingStatus('Initializing Whisper model...');
         let model;
@@ -73,7 +72,6 @@ export default function App() {
         } catch (error) {
           throw new Error(`Failed to load model: ${error.message}`);
         }
-
 
         whisper.current = await initWhisper({
           filePath: model
@@ -111,8 +109,9 @@ export default function App() {
     // Set up auto-save interval
     autoSaveInterval.current = setInterval(async () => {
       if (stopRecording) {
+        console.log('auto saving')
         stopRecording();
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 50));
         startRecording();
       }
     }, 30000); // 30 seconds
@@ -124,7 +123,6 @@ export default function App() {
       if (data?.result) {
         currentTranscript = data.result;
         setTranscript(currentTranscript);
-        console.log('Transcript:', currentTranscript);
       }
 
       if (!isCapturing) {
@@ -132,7 +130,6 @@ export default function App() {
         if (autoSaveInterval.current) {
           clearInterval(autoSaveInterval.current);
         }
-        console.log('Transcript:', currentTranscript);
         setTranscriptionLog(prev => [{text: currentTranscript, timestamp: new Date()}, ...prev]);
         setTranscript('');
         setStopRecording(null);
@@ -142,16 +139,9 @@ export default function App() {
 
   const switchSpeaker = async () => {
     if (stopRecording) {
-      // Stop current recording and save transcript
       stopRecording();
-      
-      // Wait a moment for the recording to stop
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Switch speaker
-      setCurrentSpeaker(prev => prev === 'Speaker 1' ? 'Speaker 2' : 'Speaker 1');
-      
-      // Start new recording
+      await new Promise(resolve => setTimeout(resolve, 50));
+      //setCurrentSpeaker(prev => prev === 'Speaker 1' ? 'Speaker 2' : 'Speaker 1');
       startRecording();
     }
   };

@@ -12,6 +12,10 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "assetBundlePatterns": [
+      "assets/models/*",
+      "assets/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.VersaiReactNative",
@@ -19,6 +23,9 @@
       "splash": {
         "image": "./assets/splash-icon.png",
         "backgroundColor": "#ffffff"
+      },
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app needs access to the microphone to record audio."
       }
     },
     "android": {
