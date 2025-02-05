@@ -14,7 +14,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.VersaiReactNative"
+      "bundleIdentifier": "com.anonymous.VersaiReactNative",
+      "icon": "./assets/icon.png",
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "backgroundColor": "#ffffff"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -38,6 +43,11 @@
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7b2b321f-3a8e-4724-a3a6-1a4303c9b43c"
+      }
+    }
   }
 }

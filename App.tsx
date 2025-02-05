@@ -6,6 +6,16 @@ import { useEffect, useState, useRef } from 'react';
 import React from 'react';
 import { TokenizerLoader } from "@lenml/tokenizers";
 
+//--------- TODOD
+
+// 1. Add a button to switch between speakers
+// 2. every 10 seconds save the current transcript and keep transcribing if user hasnt stopped
+// 3. translate the transcript to english
+// 4. translate the english transcript to romance
+
+
+
+
 
 export default function App() {
   const whisper = useRef<WhisperContext>();
@@ -15,6 +25,8 @@ export default function App() {
   const [loadingStatus, setLoadingStatus] = useState<string>('');
   const [loadingProgress, setLoadingProgress] = useState<number>(0);
   const [transcriptionLog, setTranscriptionLog] = useState<{text: string, timestamp: Date}[]>([]);
+  const [currentSpeaker, setCurrentSpeaker] = useState('Speaker 1');
+  const autoSaveInterval = useRef<NodeJS.Timeout>();
   // const [tokenizer_rom_to_en, setTokenizerRomToEn] = useState<any>(null);
   // const [tokenizer_en_to_rom, setTokenizerEnToRom] = useState<any>(null);
 
@@ -47,7 +59,7 @@ export default function App() {
         // setTokenizerRomToEn(tokenizer_rom_to_en);
         // setTokenizerEnToRom(tokenizer_en_to_rom);
 
-
+ 
 
         setLoadingStatus('Initializing Whisper model...');
         let model;
@@ -96,6 +108,15 @@ export default function App() {
 
     setStopRecording(() => stop);
 
+    // Set up auto-save interval
+    autoSaveInterval.current = setInterval(async () => {
+      if (stopRecording) {
+        stopRecording();
+        await new Promise(resolve => setTimeout(resolve, 500));
+        startRecording();
+      }
+    }, 30000); // 30 seconds
+
     let currentTranscript = '';
 
     subscribe(evt => {
@@ -107,6 +128,10 @@ export default function App() {
       }
 
       if (!isCapturing) {
+        // Clear interval when recording stops
+        if (autoSaveInterval.current) {
+          clearInterval(autoSaveInterval.current);
+        }
         console.log('Transcript:', currentTranscript);
         setTranscriptionLog(prev => [{text: currentTranscript, timestamp: new Date()}, ...prev]);
         setTranscript('');
@@ -114,6 +139,31 @@ export default function App() {
       }
     });
   };
+
+  const switchSpeaker = async () => {
+    if (stopRecording) {
+      // Stop current recording and save transcript
+      stopRecording();
+      
+      // Wait a moment for the recording to stop
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Switch speaker
+      setCurrentSpeaker(prev => prev === 'Speaker 1' ? 'Speaker 2' : 'Speaker 1');
+      
+      // Start new recording
+      startRecording();
+    }
+  };
+
+  // Clean up interval on component unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveInterval.current) {
+        clearInterval(autoSaveInterval.current);
+      }
+    };
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -142,6 +192,11 @@ export default function App() {
             title="Clear"
             onPress={() => setTranscript('')}
             disabled={!transcript}
+          />
+          <Button 
+            title="Switch Speaker" 
+            onPress={switchSpeaker}
+            disabled={!stopRecording}
           />
         </View>
 
