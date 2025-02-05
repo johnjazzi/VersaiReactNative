@@ -4,15 +4,7 @@ import { LogBox } from 'react-native';
 import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
 import { useEffect, useState, useRef } from 'react';
 import React from 'react';
-import { TokenizerLoader } from "@lenml/tokenizers";
-
-//--------- TODOD
-
-// 1. Add a button to switch between speakers
-// 2. every 10 seconds save the current transcript and keep transcribing if user hasnt stopped
-// 3. translate the transcript to english
-// 4. translate the english transcript to romance
-
+import { pipeline } from '@xenova/transformers';
 
 
 export default function App() {
@@ -26,37 +18,39 @@ export default function App() {
   const [currentSpeaker, setCurrentSpeaker] = useState('Speaker 1');
   const autoSaveInterval = useRef<NodeJS.Timeout>();
   const stopRecordingRef = useRef<(() => void) | null>(null);
-  // const [tokenizer_rom_to_en, setTokenizerRomToEn] = useState<any>(null);
-  // const [tokenizer_en_to_rom, setTokenizerEnToRom] = useState<any>(null);
+  
+  const [translator_rom_to_en, setTranslatorRomToEn] = useState<any>(null);
+  const [translator_en_to_rom, setTranslatorEnToRom] = useState<any>(null);
+
+
 
   useEffect(() => {
     (async () => {
       try {
-        // setLoadingStatus('Loading Romance to English tokenizer...');
-        // setLoadingProgress(0);
-        // const sourceUrls_rom_to_en = {
-        //   tokenizerJSON: "https://huggingface.co/Xenova/opus-mt-ROMANCE-en/resolve/main/tokenizer.json?download=true",
-        //   tokenizerConfig: "https://huggingface.co/Xenova/opus-mt-ROMANCE-en/resolve/main/tokenizer_config.json?download=true"
-        // }
+        console.log('Loading Romance to English translator...');
+        setLoadingStatus('Loading Romance to English translator...');
+        try {
+          const translator_rom_to_en = await pipeline('translation', 'Xenova/opus-mt-ROMANCE-en', {
+            // progress_callback: (progress) => console.log(progress) 
+          });
+          setTranslatorRomToEn(translator_rom_to_en);
+        } catch (error) {
+          console.error('Detailed error:', error);
+          setLoadingStatus('Error loading models: ' + error.message);
+        }
 
-        // const sourceUrls_en_to_rom = {
-        //   tokenizerJSON: "https://huggingface.co/Xenova/opus-mt-en-ROMANCE/resolve/main/tokenizer.json?download=true",
-        //   tokenizerConfig: "https://huggingface.co/Xenova/opus-mt-en-ROMANCE/resolve/main/tokenizer_config.json?download=true"
-        // }
+        console.log('Loading English to Romance translator...');
+        setLoadingStatus('Loading English to Romance translator...');
+        const translator_en_to_rom = await pipeline('translation', 'Xenova/opus-mt-en-ROMANCE', {
+          // progress_callback: (progress) => console.log(progress) 
+        });
+        setTranslatorEnToRom(translator_en_to_rom);
 
-        // const tokenizer_rom_to_en = await TokenizerLoader.fromPreTrainedUrls(
-        //   sourceUrls_rom_to_en
-        // );
-        // setLoadingProgress(25);
-        // console.log('First tokenizer loaded successfully');
+        const test_1 = await translator_rom_to_en('Bonjour, comment ça va?');
+        console.log(test_1);
 
-        // setLoadingStatus('Loading English to Romance tokenizer...');
-        // const tokenizer_en_to_rom = await TokenizerLoader.fromPreTrainedUrls(
-        //   sourceUrls_en_to_rom
-        // );
-
-        // setTokenizerRomToEn(tokenizer_rom_to_en);
-        // setTokenizerEnToRom(tokenizer_en_to_rom);
+        const test_2 = await translator_en_to_rom('<fr> Hello, how are you?');
+        console.log(test_2);
 
 
         setLoadingStatus('Initializing Whisper model...');
@@ -75,7 +69,6 @@ export default function App() {
         whisper.current = await initWhisper({
           filePath: model
         });
-
 
         setIsModelInitialized(true);
         setLoadingProgress(100);
