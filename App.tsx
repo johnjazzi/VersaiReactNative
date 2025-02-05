@@ -15,8 +15,6 @@ import { TokenizerLoader } from "@lenml/tokenizers";
 
 
 
-
-
 export default function App() {
   const whisper = useRef<WhisperContext>();
   const [stopRecording, setStopRecording] = useState<(() => void) | null>(null);
@@ -27,6 +25,7 @@ export default function App() {
   const [transcriptionLog, setTranscriptionLog] = useState<{text: string, timestamp: Date}[]>([]);
   const [currentSpeaker, setCurrentSpeaker] = useState('Speaker 1');
   const autoSaveInterval = useRef<NodeJS.Timeout>();
+  const stopRecordingRef = useRef<(() => void) | null>(null);
   // const [tokenizer_rom_to_en, setTokenizerRomToEn] = useState<any>(null);
   // const [tokenizer_en_to_rom, setTokenizerEnToRom] = useState<any>(null);
 
@@ -106,15 +105,19 @@ export default function App() {
 
     setStopRecording(() => stop);
 
-    // Set up auto-save interval
+    // First, store stopRecording in a ref when it's created
+    stopRecordingRef.current = stop;
+
+    if (autoSaveInterval.current) {
+      clearInterval(autoSaveInterval.current);
+    }
+    
     autoSaveInterval.current = setInterval(async () => {
-      if (stopRecording) {
-        console.log('auto saving')
-        stopRecording();
-        await new Promise(resolve => setTimeout(resolve, 50));
+      if (stop) {
+        stop();
         startRecording();
       }
-    }, 30000); // 30 seconds
+    }, 25000);
 
     let currentTranscript = '';
 
@@ -166,6 +169,7 @@ export default function App() {
         </View>
       )}
       
+
       <View style={styles.topSection}>
         <View style={styles.controlPanel}>
           <Button 
@@ -177,11 +181,6 @@ export default function App() {
             title="Stop" 
             onPress={() => stopRecording?.()} 
             disabled={!stopRecording}
-          />
-          <Button 
-            title="Clear"
-            onPress={() => setTranscript('')}
-            disabled={!transcript}
           />
           <Button 
             title="Switch Speaker" 

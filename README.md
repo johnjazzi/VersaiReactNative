@@ -30,6 +30,16 @@ pod install
 cd ..
 ```
 
+
+```
+# TO RUN ON DEVICE
+npx expo prebuild --clean
+npx expo run:ios -device
+```
+
+
+
+
 ```
 # TO RUN ON DEVICE
 npx expo prebuild --clean
