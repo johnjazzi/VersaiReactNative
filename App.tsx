@@ -1,13 +1,16 @@
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, Button, Platform, ScrollView, Modal} from 'react-native';
 import {Picker} from '@react-native-picker/picker';
+import { MaterialIcons } from '@expo/vector-icons';
+import { Asset } from 'expo-asset';
 
 import { LogBox } from 'react-native';
 import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
 import { useEffect, useState, useRef } from 'react';
 import React from 'react';
-import { pipeline, env } from '@xenova/transformers';
+import { pipeline, env, AutoTokenizer, AutoModel } from '@xenova/transformers';
 import * as FileSystem from 'expo-file-system';
+import { InferenceSession } from "onnxruntime-react-native";
 
 
 export default function App() {
@@ -15,6 +18,7 @@ export default function App() {
   const [stopRecording, setStopRecording] = useState<(() => void) | null>(null);
   const [isModelInitialized, setIsModelInitialized] = useState(false);
   const [transcript, setTranscript] = useState('');
+  const [translatedTranscript, setTranslatedTranscript] = useState('');
   const [loadingStatus, setLoadingStatus] = useState<string>('');
   const [loadingProgress, setLoadingProgress] = useState<number>(0);
   const [transcriptionLog, setTranscriptionLog] = useState<{text: string, timestamp: Date}[]>([]);
@@ -24,14 +28,12 @@ export default function App() {
   
   const [translator_rom_to_en, setTranslatorRomToEn] = useState<any>(null);
   const [translator_en_to_rom, setTranslatorEnToRom] = useState<any>(null);
-
   const [selectedLanguage, setSelectedLanguage] = useState<string>('pt');
   const [langOptions, setLangOptions] = useState<{value: string, label: string}[]>([]);
+  const [recordingLanguage, setRecordingLanguage] = useState<string>('');
 
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [showTargetModal, setShowTargetModal] = useState(false);
-
-
 
   useEffect(() => {
     (async () => {
@@ -44,7 +46,6 @@ export default function App() {
       setLangOptions(lang_options)
 
       try {
-
 
         setLoadingStatus('Initializing Whisper model...');
         let model;
@@ -66,24 +67,22 @@ export default function App() {
         setIsModelInitialized(true);
         setLoadingProgress(10);
 
-
-        
-        const modelDir = FileSystem.documentDirectory + 'assets/models/';
-        env.localModelPath = modelDir;
-        env.allowLocalModels = true;
-
-        await FileSystem.makeDirectoryAsync(modelDir, { intermediates: true }).catch(() => {});
-
-
         console.log('Loading Romance to English translator...');
         setLoadingStatus('Loading Romance to English translator...');
         setLoadingProgress(30);
         try {
-          const translator_rom_to_en = await pipeline('translation', 'Xenova/opus-mt-ROMANCE-en', {
-            // progress_callback: (progress) => console.log(progress) 
-          });
 
-          const test_1 = await translator_rom_to_en('Bonjour, comment ça va?');
+          const tokenizer = await AutoTokenizer.from_pretrained('Xenova/opus-mt-ROMANCE-en');
+          const test_1 = await tokenizer('Bonjour, comment ça va?');
+          const encoder_model = require('./assets/models/Xenova/opus-mt-ROMANCE-en/onnx/encoder_model.json');
+          const decoder_model = require('./assets/models/Xenova/opus-mt-ROMANCE-en/onnx/decoder_model.json');
+
+          const encoder_session: InferenceSession = await InferenceSession.create(encoder_model);
+          const decoder_session: InferenceSession = await InferenceSession.create(decoder_model);
+
+
+
+          //const test_1 = await translator_rom_to_en('Bonjour, comment ça va?');
           console.log(test_1);
 
           setTranslatorRomToEn(translator_rom_to_en);
@@ -96,10 +95,9 @@ export default function App() {
         setLoadingStatus('Loading English to Romance translator...');
         setLoadingProgress(60);
         try {
-          const translator_en_to_rom = await pipeline('translation', 'Xenova/opus-mt-en-ROMANCE', {
-            // progress_callback: (progress) => console.log(progress) 
-          });
-          const test_2 = await translator_en_to_rom('<fr> Hello, how are you?');
+          const tokenizer = await AutoTokenizer.from_pretrained('Xenova/opus-mt-ROMANCE-en');
+          const test_2 = await tokenizer('<fr> Hello, how are you?');
+          //const test_2 = await translator_en_to_rom('<fr> Hello, how are you?');
           console.log(test_2);
 
           setTranslatorEnToRom(translator_en_to_rom);
@@ -118,8 +116,10 @@ export default function App() {
     })();
   }, [isModelInitialized]);
 
-  const startRecording = async () => {
+  const startRecording = async (language: string) => {
     if (!whisper.current) return;
+
+    setRecordingLanguage(language);
     
     // Set up audio session for iOS
     if (Platform.OS === 'ios') {
@@ -145,7 +145,7 @@ export default function App() {
     autoSaveInterval.current = setInterval(async () => {
       if (stop) {
         stop();
-        startRecording();
+        startRecording(recordingLanguage);
       }
     }, 25000);
 
@@ -175,9 +175,38 @@ export default function App() {
       stopRecording();
       await new Promise(resolve => setTimeout(resolve, 50));
       //setCurrentSpeaker(prev => prev === 'Speaker 1' ? 'Speaker 2' : 'Speaker 1');
-      startRecording();
+      if (recordingLanguage === 'en') 
+        { startRecording(selectedLanguage); }
+      else 
+        { startRecording('en'); }
     }
   };
+
+  const translateText = async () => {
+    console.log(`Translating text... ${recordingLanguage} ${transcript}`);
+
+    console.log(translator_en_to_rom)
+    if (recordingLanguage === 'en') {
+      if (!translator_en_to_rom) { console.log('No translator_en_to_rom'); return}
+
+      const translatedText = await translator_en_to_rom(`<${selectedLanguage}> ${transcript}`);
+      setTranslatedTranscript(translatedText);
+      console.log(translatedText)
+    } else {
+      if (!translator_rom_to_en) { console.log('No translator_rom_to_en'); return}
+      
+      const translatedText = await translator_rom_to_en(`${transcript}`);
+      setTranslatedTranscript(translatedText);
+      console.log(translatedText)
+    }
+  };
+
+  useEffect(() => {
+    if (transcript) {
+      translateText();
+    }
+  }, [transcript]);
+
 
   // Clean up interval on component unmount
   useEffect(() => {
@@ -191,12 +220,56 @@ export default function App() {
   return (
     <View style={styles.container}>
       <View style={[styles.topSection, { position: 'relative' }]}>
-        <View style={styles.controlPanel}>
-          <Button 
-            title="Start" 
-            onPress={startRecording}
-            disabled={!isModelInitialized || !!stopRecording} 
+        <View style={styles.row}>
+          <View style={styles.buttonWithIcon}>
+            <Text style={styles.languageText}>
+              {langOptions.find(l => l.value === selectedLanguage)?.label || 'Select'}
+            </Text>
+            <MaterialIcons 
+                name="unfold-more" 
+                size={24} 
+                color="#007AFF" 
+                style={styles.buttonIcon} 
+                onPress={() => setShowSourceModal(true)}
+              />
+              {!translator_rom_to_en && (
+                <MaterialIcons name="error" size={24} color="red" />
+              )}
+          </View>
+          <MaterialIcons 
+            name="mic" 
+            size={28} 
+            color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
+            onPress={() => startRecording(selectedLanguage)}
+            style={styles.iconButton}
           />
+        </View>
+
+        <View style={styles.row}>
+          <View style={styles.buttonWithIcon}>
+            <Text style={styles.languageText}>English</Text>
+            <MaterialIcons 
+              name="unfold-more" 
+              size={24} 
+              color="#007AFF" 
+              style={styles.buttonIcon} 
+              onPress={() => setShowTargetModal(true)}
+            />
+            {!translator_en_to_rom && (
+              <MaterialIcons name="error" size={24} color="red" />
+            )}
+
+          </View>
+          <MaterialIcons 
+            name="mic" 
+            size={28} 
+            color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
+            onPress={() => startRecording('en')}
+            style={styles.iconButton}
+          />
+        </View>
+
+        <View style={styles.row}>
           <Button 
             title="Stop" 
             onPress={() => stopRecording?.()} 
@@ -208,62 +281,11 @@ export default function App() {
             disabled={!stopRecording}
           />
         </View>
-        <View style={styles.controlPanel}>
-          <Button 
-            title={langOptions.find(l => l.value === selectedLanguage)?.label || 'Select'}
-            onPress={() => setShowSourceModal(true)}
-          />
-          <Button 
-            title="switch" 
-            onPress={() => stopRecording?.()} 
-            disabled={!stopRecording}
-          />
-          <Button 
-            title="English"
-            onPress={() => setShowTargetModal(true)}
-          />
-
-          <Modal
-            visible={showSourceModal}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={() => setShowSourceModal(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                {langOptions.map((lang) => (
-                  <Button
-                    key={lang.value}
-                    title={lang.label}
-                    onPress={() => {
-                      setSelectedLanguage(lang.value);
-                      setShowSourceModal(false);
-                    }}
-                  />
-                ))}
-                <Button title="Cancel" onPress={() => setShowSourceModal(false)} />
-              </View>
-            </View>
-          </Modal>
-
-          <Modal
-            visible={showTargetModal}
-            transparent={true}
-            animationType="fade"
-            onRequestClose={() => setShowTargetModal(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <Button title="English" onPress={() => setShowTargetModal(false)} />
-                <Button title="Cancel" onPress={() => setShowTargetModal(false)} />
-              </View>
-            </View>
-          </Modal>
-        </View>
 
         <View style={styles.transcriptContainer}>
-          {stopRecording && <Text style={styles.recordingLabel}>Recording...</Text>}
+          {stopRecording && <Text style={styles.recordingLabel}>Recording in {recordingLanguage}...</Text>}
           <Text>{transcript}</Text>
+          <Text>{translatedTranscript}</Text>
         </View>
       </View>
 
@@ -288,6 +310,43 @@ export default function App() {
       )}
 
       <StatusBar style="auto" />
+
+      <Modal
+        visible={showSourceModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowSourceModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {langOptions.map((lang) => (
+              <Button
+                key={lang.value}
+                title={lang.label}
+                onPress={() => {
+                  setSelectedLanguage(lang.value);
+                  setShowSourceModal(false);
+                }}
+              />
+            ))}
+            <Button title="Cancel" onPress={() => setShowSourceModal(false)} />
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showTargetModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowTargetModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Button title="English" onPress={() => setShowTargetModal(false)} />
+            <Button title="Cancel" onPress={() => setShowTargetModal(false)} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -296,18 +355,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
   },
   topSection: {
     backgroundColor: '#fff',
     paddingBottom: 20,
     zIndex: 1,
   },
-  controlPanel: {
+  row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '90%',
-    marginBottom: 10,
-    paddingTop: Platform.OS === 'ios' ? 50 : 20,
+    marginBottom: 20,
+    paddingHorizontal: 20,
     alignSelf: 'center',
   },
   transcriptContainer: {
@@ -384,5 +444,31 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: 'blue',
     borderRadius: 5,
+  },
+  languageText: {
+    fontSize: 14,
+    marginRight: 5,
+  },
+  buttonWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  buttonIcon: {
+    padding: 10,  // Add padding for better touch target
+  },
+  iconButton: {
+    padding: 10,  // Add some padding for better touch target
+  },
+  iconContainer: {
+    position: 'relative',
+  },
+  errorDot: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 8,
+    height: 8,
+    backgroundColor: 'red',
+    borderRadius: 4,
   },
 });
