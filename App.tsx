@@ -1,10 +1,13 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, Button, Platform, ScrollView } from 'react-native';
+import { StyleSheet, Text, View, Button, Platform, ScrollView, Modal} from 'react-native';
+import {Picker} from '@react-native-picker/picker';
+
 import { LogBox } from 'react-native';
 import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
 import { useEffect, useState, useRef } from 'react';
 import React from 'react';
-import { pipeline } from '@xenova/transformers';
+import { pipeline, env } from '@xenova/transformers';
+import * as FileSystem from 'expo-file-system';
 
 
 export default function App() {
@@ -22,35 +25,25 @@ export default function App() {
   const [translator_rom_to_en, setTranslatorRomToEn] = useState<any>(null);
   const [translator_en_to_rom, setTranslatorEnToRom] = useState<any>(null);
 
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('pt');
+  const [langOptions, setLangOptions] = useState<{value: string, label: string}[]>([]);
+
+  const [showSourceModal, setShowSourceModal] = useState(false);
+  const [showTargetModal, setShowTargetModal] = useState(false);
+
 
 
   useEffect(() => {
     (async () => {
+
+      const lang_options = [ 
+        {value: 'fr', label: 'French'}, 
+        {value: 'it', label: 'Italian'}, 
+        {value: 'es', label: 'Spanish'}, 
+        {value: 'pt', label: 'Portuguese'}];
+      setLangOptions(lang_options)
+
       try {
-        console.log('Loading Romance to English translator...');
-        setLoadingStatus('Loading Romance to English translator...');
-        try {
-          const translator_rom_to_en = await pipeline('translation', 'Xenova/opus-mt-ROMANCE-en', {
-            // progress_callback: (progress) => console.log(progress) 
-          });
-          setTranslatorRomToEn(translator_rom_to_en);
-        } catch (error) {
-          console.error('Detailed error:', error);
-          setLoadingStatus('Error loading models: ' + error.message);
-        }
-
-        console.log('Loading English to Romance translator...');
-        setLoadingStatus('Loading English to Romance translator...');
-        const translator_en_to_rom = await pipeline('translation', 'Xenova/opus-mt-en-ROMANCE', {
-          // progress_callback: (progress) => console.log(progress) 
-        });
-        setTranslatorEnToRom(translator_en_to_rom);
-
-        const test_1 = await translator_rom_to_en('Bonjour, comment ça va?');
-        console.log(test_1);
-
-        const test_2 = await translator_en_to_rom('<fr> Hello, how are you?');
-        console.log(test_2);
 
 
         setLoadingStatus('Initializing Whisper model...');
@@ -71,6 +64,50 @@ export default function App() {
         });
 
         setIsModelInitialized(true);
+        setLoadingProgress(10);
+
+
+        
+        const modelDir = FileSystem.documentDirectory + 'assets/models/';
+        env.localModelPath = modelDir;
+        env.allowLocalModels = true;
+
+        await FileSystem.makeDirectoryAsync(modelDir, { intermediates: true }).catch(() => {});
+
+
+        console.log('Loading Romance to English translator...');
+        setLoadingStatus('Loading Romance to English translator...');
+        setLoadingProgress(30);
+        try {
+          const translator_rom_to_en = await pipeline('translation', 'Xenova/opus-mt-ROMANCE-en', {
+            // progress_callback: (progress) => console.log(progress) 
+          });
+
+          const test_1 = await translator_rom_to_en('Bonjour, comment ça va?');
+          console.log(test_1);
+
+          setTranslatorRomToEn(translator_rom_to_en);
+        } catch (error) {
+          console.error('Detailed error:', error);
+          setLoadingStatus('Error loading models: ' + error.message);
+        }
+
+        console.log('Loading English to Romance translator...');
+        setLoadingStatus('Loading English to Romance translator...');
+        setLoadingProgress(60);
+        try {
+          const translator_en_to_rom = await pipeline('translation', 'Xenova/opus-mt-en-ROMANCE', {
+            // progress_callback: (progress) => console.log(progress) 
+          });
+          const test_2 = await translator_en_to_rom('<fr> Hello, how are you?');
+          console.log(test_2);
+
+          setTranslatorEnToRom(translator_en_to_rom);
+        } catch (error) {
+          console.error('Detailed error:', error);
+          setLoadingStatus('Error loading models: ' + error.message);
+        }
+
         setLoadingProgress(100);
         setLoadingStatus('Ready!');
 
@@ -153,17 +190,7 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      {loadingProgress < 100 && (
-        <View style={styles.loadingContainer}>
-          <Text>{loadingStatus}</Text>
-          <View style={styles.progressBar}>
-            <View style={[styles.progress, { width: `${loadingProgress}%` }]} />
-          </View>
-        </View>
-      )}
-      
-
-      <View style={styles.topSection}>
+      <View style={[styles.topSection, { position: 'relative' }]}>
         <View style={styles.controlPanel}>
           <Button 
             title="Start" 
@@ -181,6 +208,58 @@ export default function App() {
             disabled={!stopRecording}
           />
         </View>
+        <View style={styles.controlPanel}>
+          <Button 
+            title={langOptions.find(l => l.value === selectedLanguage)?.label || 'Select'}
+            onPress={() => setShowSourceModal(true)}
+          />
+          <Button 
+            title="switch" 
+            onPress={() => stopRecording?.()} 
+            disabled={!stopRecording}
+          />
+          <Button 
+            title="English"
+            onPress={() => setShowTargetModal(true)}
+          />
+
+          <Modal
+            visible={showSourceModal}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setShowSourceModal(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                {langOptions.map((lang) => (
+                  <Button
+                    key={lang.value}
+                    title={lang.label}
+                    onPress={() => {
+                      setSelectedLanguage(lang.value);
+                      setShowSourceModal(false);
+                    }}
+                  />
+                ))}
+                <Button title="Cancel" onPress={() => setShowSourceModal(false)} />
+              </View>
+            </View>
+          </Modal>
+
+          <Modal
+            visible={showTargetModal}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setShowTargetModal(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <Button title="English" onPress={() => setShowTargetModal(false)} />
+                <Button title="Cancel" onPress={() => setShowTargetModal(false)} />
+              </View>
+            </View>
+          </Modal>
+        </View>
 
         <View style={styles.transcriptContainer}>
           {stopRecording && <Text style={styles.recordingLabel}>Recording...</Text>}
@@ -197,6 +276,17 @@ export default function App() {
         ))}
       </ScrollView>
 
+      {loadingProgress < 100 && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContainer}>
+            <Text>{loadingStatus}</Text>
+            <View style={styles.progressBar}>
+              <View style={[styles.progress, { width: `${loadingProgress}%` }]} />
+            </View>
+          </View>
+        </View>
+      )}
+
       <StatusBar style="auto" />
     </View>
   );
@@ -208,19 +298,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   topSection: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 1,
     backgroundColor: '#fff',
     paddingBottom: 20,
+    zIndex: 1,
   },
   controlPanel: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '90%',
-    marginBottom: 20,
+    marginBottom: 10,
     paddingTop: Platform.OS === 'ios' ? 50 : 20,
     alignSelf: 'center',
   },
@@ -234,7 +320,6 @@ const styles = StyleSheet.create({
   logContainer: {
     flex: 1,
     width: '90%',
-    marginTop: 260, // Adjust based on your content height
     alignSelf: 'center',
   },
   recordingLabel: {
@@ -242,21 +327,17 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontWeight: 'bold',
   },
-  loadingContainer: {
-    marginBottom: 20,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  progressBar: {
-    width: 200,
-    height: 20,
-    backgroundColor: '#eee',
+  modalContent: {
+    backgroundColor: 'white',
+    padding: 20,
     borderRadius: 10,
-    overflow: 'hidden',
-    marginTop: 10,
-  },
-  progress: {
-    height: '100%',
-    backgroundColor: '#4CAF50',
+    minWidth: 200,
   },
   logItem: {
     borderBottomWidth: 1,
@@ -267,5 +348,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginBottom: 4,
+  },
+  pickerContainer: {
+    flex: 1,
+    maxWidth: '40%',
+  },
+  picker: {
+    height: 40,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  loadingContainer: {
+    padding: 15,
+    alignItems: 'center',
+  },
+  progressBar: {
+    width: '100%',
+    height: 10,
+    backgroundColor: '#eee',
+    borderRadius: 5,
+    marginTop: 10,
+  },
+  progress: {
+    height: '100%',
+    backgroundColor: 'blue',
+    borderRadius: 5,
   },
 });

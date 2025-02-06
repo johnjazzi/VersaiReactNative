@@ -38,8 +38,6 @@ npx expo run:ios -device
 ```
 
 
-
-
 ```
 # TO RUN ON DEVICE
 npx expo prebuild --clean

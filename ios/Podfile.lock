@@ -1,12 +1,12 @@
 PODS:
   - boost (1.84.0)
   - DoubleConversion (1.1.6)
-  - EXConstants (17.0.4):
+  - EXConstants (17.0.5):
     - ExpoModulesCore
   - EXJSONUtils (0.14.0)
   - EXManifests (0.15.5):
     - ExpoModulesCore
-  - Expo (52.0.27):
+  - Expo (52.0.30):
     - ExpoModulesCore
   - expo-dev-client (5.0.10):
     - EXManifests
@@ -215,15 +215,15 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
-  - ExpoAsset (11.0.2):
+  - ExpoAsset (11.0.3):
     - ExpoModulesCore
-  - ExpoFileSystem (18.0.7):
+  - ExpoFileSystem (18.0.9):
     - ExpoModulesCore
   - ExpoFont (13.0.3):
     - ExpoModulesCore
   - ExpoKeepAwake (14.0.2):
     - ExpoModulesCore
-  - ExpoModulesCore (2.1.4):
+  - ExpoModulesCore (2.2.0):
     - DoubleConversion
     - glog
     - RCT-Folly (= 2024.01.01.00)
@@ -1710,11 +1710,10 @@ PODS:
     - React-logger (= 0.76.6)
     - React-perflogger (= 0.76.6)
     - React-utils (= 0.76.6)
-  - SocketRocket (0.7.1)
-  - whisper-rn (0.4.0-rc.10):
+  - RNCPicker (2.9.0):
     - React-Core
-    - whisper-rn/no-require-arc (= 0.4.0-rc.10)
-  - whisper-rn/no-require-arc (0.4.0-rc.10):
+  - SocketRocket (0.7.1)
+  - whisper-rn (0.3.9):
     - React-Core
   - Yoga (0.0.0)
 
@@ -1795,6 +1794,7 @@ DEPENDENCIES:
   - React-utils (from `../node_modules/react-native/ReactCommon/react/utils`)
   - ReactCodegen (from `build/generated/ios`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
+  - "RNCPicker (from `../node_modules/@react-native-picker/picker`)"
   - whisper-rn (from `../node_modules/whisper.rn`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
@@ -1951,6 +1951,8 @@ EXTERNAL SOURCES:
     :path: build/generated/ios
   ReactCommon:
     :path: "../node_modules/react-native/ReactCommon"
+  RNCPicker:
+    :path: "../node_modules/@react-native-picker/picker"
   whisper-rn:
     :path: "../node_modules/whisper.rn"
   Yoga:
@@ -1959,19 +1961,19 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   boost: 1dca942403ed9342f98334bf4c3621f011aa7946
   DoubleConversion: f16ae600a246532c4020132d54af21d0ddb2a385
-  EXConstants: cc788e18fb962b77999c16f6b90e551542b1bcf4
+  EXConstants: aa93a3e70f8b37c81a80931cfd23f860b1819167
   EXJSONUtils: 01fc7492b66c234e395dcffdd5f53439c5c29c93
   EXManifests: 81324537a654111964f6e7994dbc351a4233dcfa
-  Expo: 7021c4880d0bbd02781e88e213b6786c1200ebdf
+  Expo: ff20e7bf6603d213f5bcb4076adadad772468a0e
   expo-dev-client: a02392060ef8016e11facebb6f81ff172b39775f
   expo-dev-launcher: 1fba70907ef23e178ce265977f5b6a68e6ae31f3
   expo-dev-menu: 9aa7c9e8561b3b96f7756e46b084a6090f9bc8ac
   expo-dev-menu-interface: 00dc42302a72722fdecec3fa048de84a9133bcc4
-  ExpoAsset: 6cc988c426b5fc997859cc0f8f6728d1376bf53f
-  ExpoFileSystem: a0a5c44d3d3e8a2aa54fe7c70c7690df03cf4dd8
+  ExpoAsset: 77e4579f19b48d6b3f4055c933e86ce45e80caeb
+  ExpoFileSystem: 208cf862e5d0f4afcc37dc3958d54c7f0b5b7fc1
   ExpoFont: 8b14db1afebf62e9774613a082e402985f4e747c
   ExpoKeepAwake: 1f74cdf53ab3b3aeb7110f18eb053c92e7c3e710
-  ExpoModulesCore: fe7f48880828caff0ffb898f94dd5e8346803e5e
+  ExpoModulesCore: 6fbb059bef73d74169b03461013ad6e6640fcd13
   EXUpdatesInterface: 1dcebac98ac5dad4289e6ff2bd5616822e894397
   FBLazyVector: be509404b5de73a64a74284edcaf73a5d1e128b1
   fmt: 10c6e61f4be25dc963c36bd73fc7b1705fe975be
@@ -2031,8 +2033,9 @@ SPEC CHECKSUMS:
   React-utils: 8667b14d015d9a9d12bfb29ecced24e223a95a06
   ReactCodegen: 7ce28d75c1b6effc22a4697983132b4dcc5843b7
   ReactCommon: b378aa71b395667190c0bf95c14e961793eb676f
+  RNCPicker: f963e01f78e546a93b98aa201501713dbda14e94
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
-  whisper-rn: afff9535682032c343fc42cb9f95ff909cd16ffd
+  whisper-rn: 0fe4431970b70ee91108add706cd47d2b38e588e
   Yoga: be6f55a028e86c83ae066f018e9b5d24ffc45436
 
 PODFILE CHECKSUM: 2239acb13fcd46b13c3dee007fa5f0cfd61f8a93
