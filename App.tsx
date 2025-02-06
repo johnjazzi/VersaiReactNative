@@ -21,7 +21,7 @@ export default function App() {
   const [translatedTranscript, setTranslatedTranscript] = useState('');
   const [loadingStatus, setLoadingStatus] = useState<string>('');
   const [loadingProgress, setLoadingProgress] = useState<number>(0);
-  const [transcriptionLog, setTranscriptionLog] = useState<{text: string, timestamp: Date}[]>([]);
+  const [transcriptionLog, setTranscriptionLog] = useState<{text: string, translatedText: string, timestamp: Date}[]>([]);
   const [currentSpeaker, setCurrentSpeaker] = useState('Speaker 1');
   const autoSaveInterval = useRef<NodeJS.Timeout>();
   const stopRecordingRef = useRef<(() => void) | null>(null);
@@ -125,8 +125,13 @@ export default function App() {
         if (autoSaveInterval.current) {
           clearInterval(autoSaveInterval.current);
         }
-        setTranscriptionLog(prev => [{text: currentTranscript, timestamp: new Date()}, ...prev]);
+        setTranscriptionLog(prev => [{
+          text: currentTranscript, 
+          translatedText: translatedTranscript,
+          timestamp: new Date()
+        }, ...prev]);
         setTranscript('');
+        setTranslatedTranscript('');
         setStopRecording(null);
       }
     });
@@ -147,26 +152,32 @@ export default function App() {
   const translateText = async () => {
       console.log(`Translating text... ${recordingLanguage} ${transcript}`);
 
-      let target = '';
+      let targetLang = '';
       if (recordingLanguage === 'en') {
-        target = selectedLanguage;
+        targetLang = selectedLanguage;
       } else {
-        target = 'en';
+        targetLang = 'en';
       }
 
-      const response = await fetch('https://libretranslate.com/translate', {
-        method: 'POST',
-        body: JSON.stringify({
-          q: transcript,
-          source: recordingLanguage,
-          target: target,
-          format: 'text'
-        }),
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
+      const url = `https://translation.googleapis.com/language/translate/v2?key=${process.env.GOOGLE_TRANSLATE_API_KEY}`;
+    
+      console.log(url)
+      const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            q: transcript,
+            source: recordingLanguage,
+            target: targetLang,
+            format: 'text'
+          })
+        });
+
+
       const data = await response.json();
-      setTranslatedTranscript(data.translatedText);
+      setTranslatedTranscript(data.data.translations[0].translatedText);
   };
 
 
@@ -253,8 +264,8 @@ export default function App() {
 
         <View style={styles.transcriptContainer}>
           {stopRecording && <Text style={styles.recordingLabel}>Recording in {recordingLanguage}...</Text>}
-          <Text>{transcript}</Text>
           <Text>{translatedTranscript}</Text>
+          <Text style={{color: '#888', fontSize: 14}}>{transcript}</Text>
         </View>
       </View>
 
@@ -263,6 +274,9 @@ export default function App() {
           <View key={index} style={styles.logItem}>
             <Text style={styles.logTimestamp}>{item.timestamp.toLocaleTimeString()}</Text>
             <Text>{item.text}</Text>
+            {item.translatedText && (
+              <Text style={{color: '#888', fontSize: 14}}>{item.translatedText}</Text>
+            )}
           </View>
         ))}
       </ScrollView>
