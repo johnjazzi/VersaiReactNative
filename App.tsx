@@ -67,44 +67,6 @@ export default function App() {
         setIsModelInitialized(true);
         setLoadingProgress(10);
 
-        console.log('Loading Romance to English translator...');
-        setLoadingStatus('Loading Romance to English translator...');
-        setLoadingProgress(30);
-        try {
-
-          const tokenizer = await AutoTokenizer.from_pretrained('Xenova/opus-mt-ROMANCE-en');
-          const test_1 = await tokenizer('Bonjour, comment ça va?');
-          const encoder_model = require('./assets/models/Xenova/opus-mt-ROMANCE-en/onnx/encoder_model.json');
-          const decoder_model = require('./assets/models/Xenova/opus-mt-ROMANCE-en/onnx/decoder_model.json');
-
-          const encoder_session: InferenceSession = await InferenceSession.create(encoder_model);
-          const decoder_session: InferenceSession = await InferenceSession.create(decoder_model);
-
-
-
-          //const test_1 = await translator_rom_to_en('Bonjour, comment ça va?');
-          console.log(test_1);
-
-          setTranslatorRomToEn(translator_rom_to_en);
-        } catch (error) {
-          console.error('Detailed error:', error);
-          setLoadingStatus('Error loading models: ' + error.message);
-        }
-
-        console.log('Loading English to Romance translator...');
-        setLoadingStatus('Loading English to Romance translator...');
-        setLoadingProgress(60);
-        try {
-          const tokenizer = await AutoTokenizer.from_pretrained('Xenova/opus-mt-ROMANCE-en');
-          const test_2 = await tokenizer('<fr> Hello, how are you?');
-          //const test_2 = await translator_en_to_rom('<fr> Hello, how are you?');
-          console.log(test_2);
-
-          setTranslatorEnToRom(translator_en_to_rom);
-        } catch (error) {
-          console.error('Detailed error:', error);
-          setLoadingStatus('Error loading models: ' + error.message);
-        }
 
         setLoadingProgress(100);
         setLoadingStatus('Ready!');
@@ -183,23 +145,30 @@ export default function App() {
   };
 
   const translateText = async () => {
-    console.log(`Translating text... ${recordingLanguage} ${transcript}`);
+      console.log(`Translating text... ${recordingLanguage} ${transcript}`);
 
-    console.log(translator_en_to_rom)
-    if (recordingLanguage === 'en') {
-      if (!translator_en_to_rom) { console.log('No translator_en_to_rom'); return}
+      let target = '';
+      if (recordingLanguage === 'en') {
+        target = selectedLanguage;
+      } else {
+        target = 'en';
+      }
 
-      const translatedText = await translator_en_to_rom(`<${selectedLanguage}> ${transcript}`);
-      setTranslatedTranscript(translatedText);
-      console.log(translatedText)
-    } else {
-      if (!translator_rom_to_en) { console.log('No translator_rom_to_en'); return}
+      const response = await fetch('https://libretranslate.com/translate', {
+        method: 'POST',
+        body: JSON.stringify({
+          q: transcript,
+          source: recordingLanguage,
+          target: target,
+          format: 'text'
+        }),
+        headers: { 'Content-Type': 'application/json' }
+      });
       
-      const translatedText = await translator_rom_to_en(`${transcript}`);
-      setTranslatedTranscript(translatedText);
-      console.log(translatedText)
-    }
+      const data = await response.json();
+      setTranslatedTranscript(data.translatedText);
   };
+
 
   useEffect(() => {
     if (transcript) {

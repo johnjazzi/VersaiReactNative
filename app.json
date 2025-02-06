@@ -15,9 +15,6 @@
     },
     "assetBundlePatterns": [
       "assets/models/*",
-      "assets/models/Xenova/*",
-      "assets/models/Xenova/opus-mt-en-ROMANCE/*",
-      "assets/models/Xenova/opus-mt-ROMANCE-en/*",
       "assets/*"
     ],
     "ios": {
