@@ -1,5 +1,5 @@
 
-generating the models
+generating the whispermodels
 ```
 cd ..
 git clone https://github.com/ggerganov/whisper.cpp.git
@@ -19,7 +19,6 @@ sh ./models/download-ggml-model.sh base
 ./models/generate-coreml-model.sh base
 
 
-
 ```
 
 
@@ -30,16 +29,21 @@ pod install
 cd ..
 ```
 
+### Prerequ for device install
+``` 
+open in xcode
 
+
+
+
+### TO RUN ON DEVICE IN DEV MODE
 ```
-# TO RUN ON DEVICE
 npx expo prebuild --clean
 npx expo run:ios -device
 ```
 
-
+### TO RUN ON DEVICE IN RELEASE MODE
 ```
-# TO RUN ON DEVICE
 npx expo prebuild --clean
 npx expo run:ios --device --configuration Release
 ```

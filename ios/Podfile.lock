@@ -254,6 +254,8 @@ PODS:
   - hermes-engine (0.76.6):
     - hermes-engine/Pre-built (= 0.76.6)
   - hermes-engine/Pre-built (0.76.6)
+  - llama-rn (0.5.4):
+    - React-Core
   - onnxruntime-c (1.20.0)
   - onnxruntime-react-native (1.20.1):
     - onnxruntime-c
@@ -1788,6 +1790,7 @@ DEPENDENCIES:
   - fmt (from `../node_modules/react-native/third-party-podspecs/fmt.podspec`)
   - glog (from `../node_modules/react-native/third-party-podspecs/glog.podspec`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
+  - llama-rn (from `../node_modules/llama.rn`)
   - onnxruntime-react-native (from `../node_modules/onnxruntime-react-native`)
   - RCT-Folly (from `../node_modules/react-native/third-party-podspecs/RCT-Folly.podspec`)
   - RCT-Folly/Fabric (from `../node_modules/react-native/third-party-podspecs/RCT-Folly.podspec`)
@@ -1898,6 +1901,8 @@ EXTERNAL SOURCES:
   hermes-engine:
     :podspec: "../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec"
     :tag: hermes-2024-11-12-RNv0.76.2-5b4aa20c719830dcf5684832b89a6edb95ac3d64
+  llama-rn:
+    :path: "../node_modules/llama.rn"
   onnxruntime-react-native:
     :path: "../node_modules/onnxruntime-react-native"
   RCT-Folly:
@@ -2040,6 +2045,7 @@ SPEC CHECKSUMS:
   fmt: 10c6e61f4be25dc963c36bd73fc7b1705fe975be
   glog: 08b301085f15bcbb6ff8632a8ebaf239aae04e6a
   hermes-engine: 1949ca944b195a8bde7cbf6316b9068e19cf53c6
+  llama-rn: 725578134bd2a13a570ac74935dce7d81861bb60
   onnxruntime-c: 07cfff40dda7e1c54a4350bb2ad226c63150fce3
   onnxruntime-react-native: ba9b0c71ffecf944d2505ad4d8b468c22946306d
   RCT-Folly: bf5c0376ffe4dd2cf438dcf86db385df9fdce648

@@ -8,9 +8,9 @@ import { LogBox } from 'react-native';
 import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
 import { useEffect, useState, useRef } from 'react';
 import React from 'react';
-import { pipeline, env, AutoTokenizer, AutoModel } from '@xenova/transformers';
 import * as FileSystem from 'expo-file-system';
-import { InferenceSession } from "onnxruntime-react-native";
+
+import { initLlama, LlamaContext } from 'llama.rn';
 
 
 export default function App() {
@@ -26,8 +26,6 @@ export default function App() {
   const autoSaveInterval = useRef<NodeJS.Timeout>();
   const stopRecordingRef = useRef<(() => void) | null>(null);
   
-  const [translator_rom_to_en, setTranslatorRomToEn] = useState<any>(null);
-  const [translator_en_to_rom, setTranslatorEnToRom] = useState<any>(null);
   const [selectedLanguage, setSelectedLanguage] = useState<string>('pt');
   const [langOptions, setLangOptions] = useState<{value: string, label: string}[]>([]);
   const [recordingLanguage, setRecordingLanguage] = useState<string>('');
@@ -35,7 +33,11 @@ export default function App() {
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [showTargetModal, setShowTargetModal] = useState(false);
 
+  const [translationModel, setTranslationModel] = useState(null);
+  const [translationContext, setTranslationContext] = useState(null);
+
   useEffect(() => {
+    // INIT WHISPER FOR TRANSCRIPTION
     (async () => {
 
       const lang_options = [ 
@@ -77,6 +79,90 @@ export default function App() {
       }
     })();
   }, [isModelInitialized]);
+
+  useEffect(() => {
+    // INIT LLAMA FOR TRANSLATION
+    (async () => {
+      try {
+        setLoadingStatus('Checking for LLaMA model...');
+        
+        const modelName = 'llama-3.2-1b-instruct-q4_k_m.gguf';
+        const modelPath = `${FileSystem.documentDirectory}${modelName}`;
+        
+        console.log('LLaMA model path:', modelPath);
+        
+        const modelInfo = await FileSystem.getInfoAsync(modelPath);
+        console.log('Model exists?', modelInfo.exists);
+        
+        if (!modelInfo.exists) {
+          setLoadingStatus('Downloading LLaMA model...');
+          
+          const downloadResumable = FileSystem.createDownloadResumable(
+            'https://huggingface.co/hugging-quants/Llama-3.2-1B-Instruct-Q4_K_M-GGUF/resolve/main/llama-3.2-1b-instruct-q4_k_m.gguf',
+            modelPath,
+            {},
+            (downloadProgress) => {
+              const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+              setLoadingProgress(Math.round(progress * 100));
+              setLoadingStatus(`Downloading LLaMA model: ${Math.round(progress * 100)}%`);
+            }
+          );
+          
+          const downloadResult = await downloadResumable.downloadAsync();
+          console.log('Download completed:', downloadResult);
+          
+          if (!downloadResult || !downloadResult.uri) {
+            throw new Error('Download failed');
+          }
+        }
+        
+        // Initialize Llama with the model
+        try {
+          setLoadingStatus('Initializing translation model...');
+          const llamaContext = await initLlama({
+            model: modelPath,
+            use_mlock: true,
+            n_ctx: 2048,
+            n_batch: 512,
+            n_gpu_layers: Platform.OS === 'ios' ? 1 : 0,
+          });
+          
+          setTranslationContext(llamaContext);
+          
+          // Add a test translation to verify the model works
+          setLoadingStatus('Testing translation model...');
+          try {
+
+            const test = await translateText("hello world", "en", "pt");
+            console.log('Test translation result:', test);
+            
+           } catch (testError) {
+            console.error('Test translation failed:', testError);
+            setLoadingStatus('Translation model initialized but test failed. Check console for details.');
+          }
+        } catch (llamaError) {
+          console.error('Llama initialization error:', llamaError);
+          setTranslationContext(null);
+          setLoadingStatus('Error initializing translation model. Some features may be unavailable.');
+        }
+        
+      } catch (error) {
+        console.error('Model loading error:', error);
+        setLoadingStatus('Error: ' + error.message);
+      }
+
+
+    })();
+  }, []);
+
+  const saveToTranscriptionLog = async (text: string) => {
+    const translatedText = await translateText(text, recordingLanguage, (recordingLanguage === 'en') ?  selectedLanguage : 'en');
+    setTranscriptionLog(prev => [{
+      text: text, 
+      translatedText: translatedText,
+      timestamp: new Date()
+    }, ...prev]);
+  }
 
   const startRecording = async (language: string) => {
     if (!whisper.current) return;
@@ -125,11 +211,7 @@ export default function App() {
         if (autoSaveInterval.current) {
           clearInterval(autoSaveInterval.current);
         }
-        setTranscriptionLog(prev => [{
-          text: currentTranscript, 
-          translatedText: translatedTranscript,
-          timestamp: new Date()
-        }, ...prev]);
+        saveToTranscriptionLog(currentTranscript);
         setTranscript('');
         setTranslatedTranscript('');
         setStopRecording(null);
@@ -149,42 +231,61 @@ export default function App() {
     }
   };
 
-  const translateText = async () => {
-      console.log(`Translating text... ${recordingLanguage} ${transcript}`);
-
-      let targetLang = '';
-      if (recordingLanguage === 'en') {
-        targetLang = selectedLanguage;
-      } else {
-        targetLang = 'en';
-      }
-
-      const url = `https://translation.googleapis.com/language/translate/v2?key=${process.env.GOOGLE_TRANSLATE_API_KEY}`;
+  const translateText = async (text: string, sourceLang: string, targetLang: string) => {
+    if (!text || !translationContext) return text;
     
-      console.log(url)
-      const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            q: transcript,
-            source: recordingLanguage,
-            target: targetLang,
-            format: 'text'
-          })
-        });
+    try {
+      // Create a prompt for translation
+      // Format the prompt based on the language codes
+      const sourceLanguageName = getLanguageName(sourceLang);
+      const targetLanguageName = getLanguageName(targetLang);
+      
+      const stopWords = ['</s>', '<|end|>', '<|eot_id|>', '<|end_of_text|>', '<|im_end|>', '<|EOT|>', '<|END_OF_TURN_TOKEN|>', '<|end_of_turn|>', '<|endoftext|>']
 
+      const prompt = `
+          ${sourceLanguageName}: "${text}"
+          ${targetLanguageName}:`;
+      
+      // Run inference
+      const textResult = await translationContext.completion({
+        prompt,
+        n_predict: 50,
+        stop: [...stopWords, 'Llama:', 'User:', '\n',],
+        temperature: 0.1,
+        top_p: 0.95,
+        repeat_penalty: 1.2,
+      });
+      
 
-      const data = await response.json();
-      setTranslatedTranscript(data.data.translations[0].translatedText);
+      return textResult.text;
+    } catch (error) {
+      console.error('Translation error:', error);
+      return text;
+    }
   };
 
+  // Helper function to get full language name from code
+  const getLanguageName = (code: string) => {
+    const languageMap = {
+      'en': 'English',
+      'fr': 'French',
+      'es': 'Spanish',
+      'it': 'Italian',
+      'pt': 'Portuguese',
+      // Add more languages as needed
+    };
+    
+    return languageMap[code] || code;
+  };
 
-  useEffect(() => {
-    if (transcript) {
-      translateText();
+  useEffect(() => { async function translateTranscript() {
+      if (transcript) {
+
+        const translatedText = await translateText(transcript, recordingLanguage, (recordingLanguage === 'en') ?  selectedLanguage : 'en');
+        setTranslatedTranscript(translatedText);
+      }
     }
+  translateTranscript();
   }, [transcript]);
 
 
@@ -212,9 +313,9 @@ export default function App() {
                 style={styles.buttonIcon} 
                 onPress={() => setShowSourceModal(true)}
               />
-              {!translator_rom_to_en && (
+              {/* {!translator_rom_to_en && (
                 <MaterialIcons name="error" size={24} color="red" />
-              )}
+              )} */}
           </View>
           <MaterialIcons 
             name="mic" 
@@ -235,9 +336,9 @@ export default function App() {
               style={styles.buttonIcon} 
               onPress={() => setShowTargetModal(true)}
             />
-            {!translator_en_to_rom && (
+            {/* {!translator_en_to_rom && (
               <MaterialIcons name="error" size={24} color="red" />
-            )}
+            )} */}
 
           </View>
           <MaterialIcons 
@@ -273,9 +374,9 @@ export default function App() {
         {transcriptionLog.map((item, index) => (
           <View key={index} style={styles.logItem}>
             <Text style={styles.logTimestamp}>{item.timestamp.toLocaleTimeString()}</Text>
-            <Text>{item.text}</Text>
-            {item.translatedText && (
-              <Text style={{color: '#888', fontSize: 14}}>{item.translatedText}</Text>
+            <Text>{item.translatedText}</Text>
+            {item.text && (
+              <Text style={{color: '#888', fontSize: 14}}>{item.text}</Text>
             )}
           </View>
         ))}
