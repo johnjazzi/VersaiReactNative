@@ -243,14 +243,16 @@ export default function App() {
       const stopWords = ['</s>', '<|end|>', '<|eot_id|>', '<|end_of_text|>', '<|im_end|>', '<|EOT|>', '<|END_OF_TURN_TOKEN|>', '<|end_of_turn|>', '<|endoftext|>']
 
       const prompt = `
-          ${sourceLanguageName}: "${text}"
-          ${targetLanguageName}:`;
+      ${sourceLanguageName}: "${text}"
+      ${targetLanguageName}: 
+      `;
       
+      console.log(prompt);
       // Run inference
       const textResult = await translationContext.completion({
         prompt,
-        n_predict: 50,
-        stop: [...stopWords, 'Llama:', 'User:', '\n',],
+        n_predict: text.length+10,
+        stop: [...stopWords, 'Llama:', 'User:', '\n'],
         temperature: 0.1,
         top_p: 0.95,
         repeat_penalty: 1.2,
