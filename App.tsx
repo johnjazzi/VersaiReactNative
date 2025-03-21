@@ -41,10 +41,10 @@ export default function App() {
     (async () => {
 
       const lang_options = [ 
-        {value: 'fr', label: 'French'}, 
-        {value: 'it', label: 'Italian'}, 
-        {value: 'es', label: 'Spanish'}, 
-        {value: 'pt', label: 'Portuguese'}];
+        {value: 'french', label: 'French'}, 
+        {value: 'italian', label: 'Italian'}, 
+        {value: 'spanish', label: 'Spanish'}, 
+        {value: 'portuguese', label: 'Portuguese'}];
       setLangOptions(lang_options)
 
       try {
@@ -98,7 +98,7 @@ export default function App() {
           setLoadingStatus('Downloading LLaMA model...');
           
           const downloadResumable = FileSystem.createDownloadResumable(
-            'https://huggingface.co/hugging-quants/Llama-3.2-1B-Instruct-Q4_K_M-GGUF/resolve/main/llama-3.2-1b-instruct-q4_k_m.gguf',
+            'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-IQ3_M.gguf',
             modelPath,
             {},
             (downloadProgress) => {
@@ -133,7 +133,7 @@ export default function App() {
           setLoadingStatus('Testing translation model...');
           try {
 
-            const test = await translateText("hello world", "en", "pt");
+            const test = await translateText("hello world", "english", "portuguese");
             console.log('Test translation result:', test);
             
            } catch (testError) {
@@ -156,12 +156,15 @@ export default function App() {
   }, []);
 
   const saveToTranscriptionLog = async (text: string) => {
-    const translatedText = await translateText(text, recordingLanguage, (recordingLanguage === 'en') ?  selectedLanguage : 'en');
-    setTranscriptionLog(prev => [{
-      text: text, 
-      translatedText: translatedText,
-      timestamp: new Date()
-    }, ...prev]);
+    const translatedText = await translateText(text, recordingLanguage, (recordingLanguage === 'english') ? selectedLanguage : 'english');
+    
+    if (text) {
+      setTranscriptionLog(prev => [{
+        text: text, 
+        translatedText: translatedText,
+        timestamp: new Date()
+      }, ...prev]);
+    }
   }
 
   const startRecording = async (language: string) => {
@@ -193,7 +196,7 @@ export default function App() {
     autoSaveInterval.current = setInterval(async () => {
       if (stop) {
         stop();
-        startRecording(recordingLanguage);
+        startRecording(language);
       }
     }, 25000);
 
@@ -237,28 +240,33 @@ export default function App() {
     try {
       // Create a prompt for translation
       // Format the prompt based on the language codes
-      const sourceLanguageName = getLanguageName(sourceLang);
-      const targetLanguageName = getLanguageName(targetLang);
+      const sourceLanguageName = sourceLang;
+      const targetLanguageName = targetLang;
       
       const stopWords = ['</s>', '<|end|>', '<|eot_id|>', '<|end_of_text|>', '<|im_end|>', '<|EOT|>', '<|END_OF_TURN_TOKEN|>', '<|end_of_turn|>', '<|endoftext|>']
 
       const prompt = `
-      ${sourceLanguageName}: "${text}"
-      ${targetLanguageName}: 
+        <|start_header_id|>system<|end_header_id|>
+        You are a translation assistant. Please translate the given text to the target language accurately while preserving the meaning.
+        user input is formatted as: text <target=language>
+
+        <|eot_id|><|start_header_id|>user input<|end_header_id|>
+        ${text} 
+        <target=${targetLanguageName}>
+        <|eot_id|>
+        <|start_header_id|>translation<|end_header_id|>
       `;
       
-      console.log(prompt);
       // Run inference
       const textResult = await translationContext.completion({
         prompt,
-        n_predict: text.length+10,
-        stop: [...stopWords, 'Llama:', 'User:', '\n'],
-        temperature: 0.1,
+        n_predict: text.length+20,
+        stop: [...stopWords, 'Llama:', 'User:', '\n\n'],
+        temperature: 0.7,
         top_p: 0.95,
         repeat_penalty: 1.2,
       });
       
-
       return textResult.text;
     } catch (error) {
       console.error('Translation error:', error);
