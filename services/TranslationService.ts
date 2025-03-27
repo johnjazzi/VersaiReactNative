@@ -2,6 +2,8 @@ import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 import { initLlama, LlamaContext } from 'llama.rn';
 import { LANGUAGE_MAP, LanguageMapping } from './Common';
+import { useEffect, useState, useRef } from 'react';
+
 
 export interface TranslationServiceState {
   useCloudTranslation: boolean;
@@ -11,6 +13,19 @@ export interface TranslationServiceState {
   isInitialized: boolean;
 }
 
+export function useTranslationService() {
+  const [state, setState] = useState<TranslationServiceState>(
+    () => translationService.getState()
+  );
+
+  useEffect(() => {
+    const unsubscribe = translationService.subscribe(setState);
+    return () => unsubscribe();
+  }, []);
+
+  return state;
+}
+
 
 export interface TranslationSettings {
   useCloudTranslation: boolean;
@@ -18,8 +33,8 @@ export interface TranslationSettings {
 }
 
 export class TranslationService {
-  private _modelName: string = 'Llama-3.2-1B.Q2_K.gguf';
-  private _modelUrl: string = `https://huggingface.co/QuantFactory/Llama-3.2-1B-GGUF/resolve/main/${this._modelName}`;
+  private _modelName: string = 'Llama-3.2-1B-Instruct-Q8_0.gguf';
+  private _modelUrl: string = `https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/${this._modelName}`;
   private _modelPath: string = '';
   private _modelSize: number = 0 ;
   private _exists: boolean = false;
@@ -49,7 +64,22 @@ export class TranslationService {
   async updateModelInfo() {
     try {
       this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
+      console.log('Model path:', this._modelPath);
+
+      // Ensure directory exists
+      if (!FileSystem.documentDirectory) {
+        console.error('Document directory is null');
+        throw new Error('Document directory is null');
+      }
+
+      const dirInfo = await FileSystem.getInfoAsync(FileSystem.documentDirectory);
+      if (!dirInfo.exists) {
+        console.error('Document directory does not exist');
+        throw new Error('Document directory does not exist');
+      }
+
       const info = await FileSystem.getInfoAsync(this._modelPath);
+      console.log('File info:', info);
       this._modelSize = info.exists ? (info as any).size : 0;
       this._exists = info.exists;
       this.notifyListeners();
@@ -59,7 +89,7 @@ export class TranslationService {
         size: this._modelSize,
         path: this._modelPath
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating model info:', error);
       throw error;
     }
@@ -69,18 +99,24 @@ export class TranslationService {
     setLoadingStatus?: (status: string) => void , 
     setLoadingProgress?: (progress: number) => void) {
     try {
-      await this.updateModelInfo();
-      if (!this._modelSize) {
-        this._useCloudTranslation = true;
+      console.log('Initializing translation model...');
+
+      if (this._isInitialized) {
+        console.log('Translation model already initialized');
         return;
       }
 
-      // setLoadingStatus && setLoadingStatus('Initializing translation model...');
-      // const modelInfo = await FileSystem.getInfoAsync(this._modelPath);
-      // console.log('Model path:', this._modelPath);
-      // console.log('Model info:', JSON.stringify(modelInfo, null, 2));
+      this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
+      const modelInfo = await FileSystem.getInfoAsync(this._modelPath);
+      
+      if (!modelInfo.exists) {
+        this._useCloudTranslation = true;
+        console.log('Translation model not found');
+        return;
+      }
 
-      console.log('Model path:', this._modelPath)
+      this._modelSize = modelInfo.size;
+      this._exists = true;
       
       this.context = await initLlama({
         model: this._modelPath,
@@ -94,7 +130,7 @@ export class TranslationService {
       // Test translation
       
       this.settings.useCloudTranslation = false;
-      await this.translate("hello world", "English", "Portugese");
+      await this.translate("hello world", "en", "pt");
       this._isInitialized = true;
 
 
@@ -111,6 +147,7 @@ export class TranslationService {
     setLoadingStatus: (status: string) => void
   ): Promise<void> {
     try {
+      this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`
       setLoadingStatus('Downloading model...');
       const downloadResumable = FileSystem.createDownloadResumable(
         this._modelUrl,
@@ -131,7 +168,7 @@ export class TranslationService {
       
       // Initialize after download
       await this.initialize(setLoadingStatus);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Download error:', error);
       setLoadingStatus('Error downloading model: ' + error.message);
       throw error;
@@ -144,7 +181,7 @@ export class TranslationService {
       await FileSystem.deleteAsync(this._modelPath);
       this.context = null;
       setLoadingStatus('Model deleted successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Delete error:', error);
       setLoadingStatus('Error deleting model: ' + error.message);
       throw error;
@@ -157,16 +194,12 @@ export class TranslationService {
     if (!this.settings.googleApiKey) {
       console.error('Google API key not configured');
       throw new Error('Google API key not configured');
+      
     }
 
     try {
       // Find the language mapping by code
-      const sourceCode = LANGUAGE_MAP[sourceLang].googleCode;
-      const targetCode = LANGUAGE_MAP[targetLang].googleCode;
 
-      if (!sourceCode || !targetCode) {
-        throw new Error(`Invalid language code: ${sourceLang} or ${targetLang}`);
-      }
 
       const response = await fetch(
         `https://translation.googleapis.com/language/translate/v2?key=${this.settings.googleApiKey}`,
@@ -177,8 +210,8 @@ export class TranslationService {
           },
           body: JSON.stringify({
             q: text,
-            source: sourceCode,
-            target: targetCode,
+            source: sourceLang,
+            target: targetLang,
           }),
         }
       );
@@ -193,6 +226,7 @@ export class TranslationService {
       if (data.data?.translations?.[0]?.translatedText) {
         return data.data.translations[0].translatedText;
       }
+      return '';
     } catch (error) {
       console.error('Cloud translation error:', error);
       throw error;

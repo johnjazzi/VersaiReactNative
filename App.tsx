@@ -2,7 +2,6 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, Button, Platform, ScrollView, Modal, Switch, TextInput, TouchableOpacity} from 'react-native';
 import {Picker} from '@react-native-picker/picker';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Asset } from 'expo-asset';
 import { LANGUAGE_MAP, LanguageMapping } from './services/Common';
 
 import { LogBox } from 'react-native';
@@ -12,37 +11,9 @@ import React from 'react';
 import * as FileSystem from 'expo-file-system';
 
 
-import { transcriptionService } from './services/TranscriptionService';
-import { translationService } from './services/TranslationService';
-import { TranslationServiceState } from './services/TranslationService';
-import { TranscriptionServiceState } from './services/TranscriptionService';
+import { transcriptionService , useTranscriptionService , TranscriptionServiceState } from './services/TranscriptionService';
+import { translationService , useTranslationService , TranslationServiceState } from './services/TranslationService';
 
-
-function useTranslationService() {
-  const [state, setState] = useState<TranslationServiceState>(
-    () => translationService.getState()
-  );
-
-  useEffect(() => {
-    const unsubscribe = translationService.subscribe(setState);
-    return () => unsubscribe();
-  }, []);
-
-  return state;
-}
-
-function useTranscriptionService() {
-  const [state, setState] = useState<TranscriptionServiceState>(
-    () => transcriptionService.getState()
-  );
-
-  useEffect(() => {
-    const unsubscribe = transcriptionService.subscribe(setState);
-    return () => unsubscribe();
-  }, []);
-
-  return state;
-}
 
 export default function App() {
   const whisper = useRef<WhisperContext>();
@@ -79,50 +50,37 @@ export default function App() {
     modelExists: transcriptionModelExists,
     modelName: transcriptionModelName,
     modelSize: transcriptionModelSize,
-    isInitialized: transcriptionInitialized 
+    isInitialized: transcriptionInitialized,
+    whisperContext: transcriptionContext
   } = useTranscriptionService();
 
 
   useEffect(() => {
-    // INIT WHISPER FOR TRANSCRIPTION
+    // INIT 
     (async () => {
 
-      //TODO: fix this with common.ts
       const lang_options = Object.entries(LANGUAGE_MAP).map(([key, value]: [string, LanguageMapping]) => ({
         value: value.googleCode,
         label: value.displayName
       }));
       setLangOptions(lang_options)
 
-      try {
 
-        setLoadingStatus('Initializing Whisper model...');
-        let model;
-        try {
-          model = Platform.select({
-            ios: require('./assets/models/ggml-base.bin'),
-            android: require('./assets/models/ggml-base.bin'),
-            default: require('./assets/models/ggml-base.bin')
-          });
-          if (!model) throw new Error('Model path not found');
-        } catch (error) {
-          throw new Error(`Failed to load model: ${error.message}`);
+      // INIT Models
+      try {
+        console.log('Initializing models...');
+        if (transcriptionInitialized || translationInitialized) { 
+          console.log('Models already initialized');
+          return
         }
 
-        whisper.current = await initWhisper({
-          filePath: model
-        });
-
+        await transcriptionService.initialize(setLoadingStatus, setLoadingProgress);
+        await translationService.initialize(setLoadingStatus, setLoadingProgress);
         setIsModelInitialized(true);
-        setLoadingProgress(10);
-
-        setLoadingProgress(100);
-        setLoadingStatus('Ready!');
-
-      } catch (error) {
-        console.error('Detailed error:', error);
-        setLoadingStatus('Error loading models: ' + error.message);
+      } catch (error: any) {
+        setLoadingStatus('Error initializing models: ' + error.message);
       }
+
     })();
   }, [isModelInitialized]);
 
@@ -140,7 +98,7 @@ export default function App() {
 
   const startRecording = async (language: string) => {
     try {
-      if (!whisper.current) return;
+      if (!transcriptionContext) return;
       
       setRecordingLanguage(language);
 
@@ -153,23 +111,10 @@ export default function App() {
         await AudioSessionIos.setActive(true);
       }
 
-      const { stop, subscribe } = await whisper.current.transcribeRealtime();
+      const { stop, subscribe } = await transcriptionContext.transcribeRealtime();
 
       setStopRecording(() => stop);
-
-      // First, store stopRecording in a ref when it's created
       stopRecordingRef.current = stop;
-
-      if (autoSaveInterval.current) {
-        clearInterval(autoSaveInterval.current);
-      }
-      
-      autoSaveInterval.current = setInterval(async () => {
-        if (stop) {
-          stop();
-          startRecording(language);
-        }
-      }, 25000);
 
       let currentTranscript = '';
 
@@ -181,14 +126,11 @@ export default function App() {
         }
 
         if (!isCapturing) {
-          // Clear interval when recording stops
-          if (autoSaveInterval.current) {
-            clearInterval(autoSaveInterval.current);
-          }
           saveToTranscriptionLog(currentTranscript);
           setTranscript('');
           setTranslatedTranscript('');
           setStopRecording(null);
+          stopRecordingRef.current = null;
         }
       });
     } catch (error) {
@@ -197,20 +139,20 @@ export default function App() {
   };
 
   const switchSpeaker = async () => {
-    if (stopRecording) {
-      stopRecording();
+    if (stopRecordingRef.current) {
+      stopRecordingRef.current();
       await new Promise(resolve => setTimeout(resolve, 50));
-      if (languageTwo === 'en') 
-        { startRecording(languageOne); }
+      if (recordingLanguage === languageOne) 
+        { startRecording(languageTwo); }
       else 
-        { startRecording('en'); }
+        { startRecording(languageOne); }
     }
   };
 
-
   useEffect(() => { async function translateTranscript() {
       if (transcript) {
-        const translatedText = await translationService.translate(transcript, languageTwo, (languageTwo === 'en') ? languageOne : 'en');
+        const targetLanguage = recordingLanguage === languageOne ? languageTwo : languageOne;
+        const translatedText = await translationService.translate(transcript, recordingLanguage, targetLanguage);
         setTranslatedTranscript(translatedText);
       }
     }
@@ -226,22 +168,6 @@ export default function App() {
     };
   }, []);
 
-
-  useEffect(() => {
-    // Initialize transcription
-    
-    (async () => {
-      try {
-        //await transcriptionService.initialize(setLoadingStatus);
-        setIsModelInitialized(true);
-
-        await translationService.initialize(setLoadingStatus);
-
-      } catch (error) {
-        setLoadingStatus('Error initializing transcription: ' + error.message);
-      }
-    })();
-  }, []);
 
 
   const deleteModel = async () => {
@@ -284,6 +210,7 @@ export default function App() {
                   color="#007AFF" 
                   style={styles.buttonIcon} 
                   onPress={() => setShowSourceModal(true)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 />
               </View>
               <MaterialIcons 
@@ -292,6 +219,7 @@ export default function App() {
                 color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
                 onPress={() => startRecording(languageOne)}
                 style={styles.iconButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               />
             </View>
 
@@ -306,6 +234,7 @@ export default function App() {
                   color="#007AFF" 
                   style={styles.buttonIcon} 
                   onPress={() => setShowTargetModal(true)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 />
               </View>
               <MaterialIcons 
@@ -314,6 +243,7 @@ export default function App() {
                 color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
                 onPress={() => startRecording(languageTwo)}
                 style={styles.iconButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               />
             </View>
 
@@ -390,7 +320,7 @@ export default function App() {
           </View>
 
           <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Translation Model</Text>
+            <Text style={styles.settingLabel}>Transcription Model</Text>
             {transcriptionModelExists ? (
               <View style={styles.modelInfo}>
                 <Text style={styles.modelText}>{transcriptionModelName}</Text>
@@ -409,7 +339,7 @@ export default function App() {
                 <Text style={styles.modelText}>Size: {(transcriptionModelSize / (1000000000)).toFixed(2)} GB</Text>
                 <Button 
                   title="Download Model" 
-                  onPress={() => translationService.downloadModel(setLoadingProgress, setLoadingStatus)}
+                  onPress={() => transcriptionService.downloadModel(setLoadingProgress, setLoadingStatus)}
                   disabled={loadingProgress < 100 && loadingProgress > 0}
                 />
               </View>

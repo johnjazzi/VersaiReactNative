@@ -3,15 +3,28 @@ import { Platform } from 'react-native';
 import { LANGUAGE_MAP, LanguageMapping } from './Common';
 import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
 import { TranslationServiceState } from './TranslationService';
-
+import { useEffect, useState, useRef } from 'react';
 
 export interface TranscriptionServiceState {
   modelExists: boolean;
   modelName: string;
   modelSize: number;
   isInitialized: boolean;
+  whisperContext: WhisperContext | null;
 }
 
+export function useTranscriptionService() {
+  const [state, setState] = useState<TranscriptionServiceState>(
+    () => transcriptionService.getState()
+  );
+
+  useEffect(() => {
+    const unsubscribe = transcriptionService.subscribe(setState);
+    return () => unsubscribe();
+  }, []);
+
+  return state;
+}
 
 export class TranscriptionService {
   private _modelName: string = 'ggml-small.bin';
@@ -24,35 +37,39 @@ export class TranscriptionService {
 
   private listeners: Set<(state: TranscriptionServiceState) => void> = new Set();
 
-  
 
   async initialize(
       setLoadingStatus?: (status: string) => void, 
       setLoadingProgress?: (progress: number) => void) {
     try {
 
-      setLoadingStatus('Initializing Whisper model...');
+      setLoadingStatus?.('Initializing Whisper model...');
+      this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
       const modelInfo = await FileSystem.getInfoAsync(this._modelPath);
+      
       if (!modelInfo.exists) {
         throw new Error('Model not found');
       }
-      console.log('Model path:', this._modelPath);
-      console.log('Model info:', JSON.stringify(modelInfo, null, 2));
-      
+
+      this._modelSize = modelInfo.size;
+      this._exists = true;
+
       this.context = await initWhisper({
         filePath:this._modelPath
       });
 
-      setLoadingProgress(10);
+      console.log('Whisper context initialized');
 
-      setLoadingProgress(100);
-      setLoadingStatus('Ready!');
+      setLoadingProgress?.(10);
+
+      setLoadingProgress?.(100);
+      setLoadingStatus?.('Ready!');
       this._isInitialized = true;
       this.notifyListeners();
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Detailed error:', error);
-      setLoadingStatus('Error loading models: ' + error.message);
+      setLoadingStatus?.('Error loading models: ' + error.message);
     }
   }
 
@@ -61,6 +78,8 @@ export class TranscriptionService {
     setLoadingStatus: (status: string) => void
   ): Promise<void> {
     try {
+      this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`
+      console.log('downloading model from', this._modelUrl);
       setLoadingStatus('Downloading model...');
       const downloadResumable = FileSystem.createDownloadResumable(
         this._modelUrl,
@@ -80,7 +99,7 @@ export class TranscriptionService {
       
       // Initialize after download
       await this.initialize(setLoadingStatus);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Download error:', error);
       setLoadingStatus('Error downloading model: ' + error.message);
       throw error;
@@ -93,7 +112,7 @@ export class TranscriptionService {
       await FileSystem.deleteAsync(this._modelPath);
       this.context = null;
       setLoadingStatus('Model deleted successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Delete error:', error);
       setLoadingStatus('Error deleting model: ' + error.message);
       throw error;
@@ -105,7 +124,8 @@ export class TranscriptionService {
       modelExists: this._exists,
       modelName: this._modelName,
       modelSize: this._modelSize,
-      isInitialized: this._isInitialized
+      isInitialized: this._isInitialized,
+      whisperContext: this.context
     };
   }
 

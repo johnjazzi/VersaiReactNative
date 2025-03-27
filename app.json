@@ -15,7 +15,9 @@
     },
     "assetBundlePatterns": [
       "assets/models/*",
-      "assets/*"
+      "assets/*",
+      "**/*.gguf",
+      "**/*.bin"
     ],
     "ios": {
       "supportsTablet": true,
@@ -27,7 +29,9 @@
         "backgroundColor": "#ffffff"
       },
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "This app needs access to the microphone to record audio."
+        "NSMicrophoneUsageDescription": "This app needs access to the microphone to record audio.",
+        "UIFileSharingEnabled": true,
+        "LSSupportsOpeningDocumentsInPlace": true
       }
     },
     "android": {
@@ -35,7 +39,11 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.anonymous.VersaiReactNative"
+      "package": "com.anonymous.VersaiReactNative",
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
