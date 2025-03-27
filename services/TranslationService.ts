@@ -3,12 +3,14 @@ import { Platform } from 'react-native';
 import { initLlama, LlamaContext } from 'llama.rn';
 import { LANGUAGE_MAP, LanguageMapping } from './Common';
 
-
-export interface ModelInfo {
-  exists: boolean;
-  size?: number;
-  name?: string;
+export interface TranslationServiceState {
+  useCloudTranslation: boolean;
+  modelExists: boolean;
+  modelName: string;
+  modelSize: number;
+  isInitialized: boolean;
 }
+
 
 export interface TranslationSettings {
   useCloudTranslation: boolean;
@@ -20,6 +22,7 @@ export class TranslationService {
   private _modelUrl: string = `https://huggingface.co/QuantFactory/Llama-3.2-1B-GGUF/resolve/main/${this._modelName}`;
   private _modelPath: string = '';
   private _modelSize: number = 0 ;
+  private _exists: boolean = false;
   private _isInitialized: boolean = false;
   private _useCloudTranslation: boolean = true;
   private context: LlamaContext | null = null;
@@ -27,15 +30,8 @@ export class TranslationService {
     useCloudTranslation: true,
     googleApiKey: process.env.GOOGLE_TRANSLATE_API_KEY || ''
   };
+  private listeners: Set<(state: TranslationServiceState) => void> = new Set();
 
-  get modelName() { return this._modelName; }
-  get modelPath() { return this._modelPath; }
-  get modelSize() { return this._modelSize; }
-  get isInitialized() { return this._isInitialized; }
-
-  get useCloudTranslation(): boolean {
-    return this.settings.useCloudTranslation;
-  }
 
   get googleApiKey(): string {
     return this.settings.googleApiKey || '';
@@ -43,6 +39,7 @@ export class TranslationService {
 
   async setCloudTranslation(value: boolean): Promise<void> {
     this.settings.useCloudTranslation = value;
+    this.notifyListeners();
   }
 
   setGoogleApiKey(key: string): void {
@@ -54,6 +51,8 @@ export class TranslationService {
       this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
       const info = await FileSystem.getInfoAsync(this._modelPath);
       this._modelSize = info.exists ? (info as any).size : 0;
+      this._exists = info.exists;
+      this.notifyListeners();
       return {
         exists: info.exists,
         name: this._modelName,
@@ -243,6 +242,27 @@ export class TranslationService {
 
   get isModelAvailable(): boolean {
     return this._isInitialized && !!this._modelPath;
+  }
+
+  getState(): TranslationServiceState {
+    return {
+      useCloudTranslation: this.settings.useCloudTranslation,
+      modelExists: this._exists,
+      modelName: this._modelName,
+      modelSize: this._modelSize,
+      isInitialized: this._isInitialized
+    };
+  }
+
+  private notifyListeners() {
+    const state = this.getState();
+    this.listeners.forEach(listener => listener(state));
+  }
+
+  subscribe(listener: (state: TranslationServiceState) => void) {
+    this.listeners.add(listener);
+    listener(this.getState());
+    return () => {this.listeners.delete(listener);}
   }
 }
 

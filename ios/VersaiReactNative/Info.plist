@@ -27,7 +27,7 @@
       <dict>
         <key>CFBundleURLSchemes</key>
         <array>
-          <string>com.johnjazzinaro.VersaiReactNative</string>
+          <string>com.anonymous.VersaiReactNative</string>
         </array>
       </dict>
       <dict>

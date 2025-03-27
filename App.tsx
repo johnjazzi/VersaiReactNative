@@ -14,7 +14,35 @@ import * as FileSystem from 'expo-file-system';
 
 import { transcriptionService } from './services/TranscriptionService';
 import { translationService } from './services/TranslationService';
+import { TranslationServiceState } from './services/TranslationService';
+import { TranscriptionServiceState } from './services/TranscriptionService';
 
+
+function useTranslationService() {
+  const [state, setState] = useState<TranslationServiceState>(
+    () => translationService.getState()
+  );
+
+  useEffect(() => {
+    const unsubscribe = translationService.subscribe(setState);
+    return () => unsubscribe();
+  }, []);
+
+  return state;
+}
+
+function useTranscriptionService() {
+  const [state, setState] = useState<TranscriptionServiceState>(
+    () => transcriptionService.getState()
+  );
+
+  useEffect(() => {
+    const unsubscribe = transcriptionService.subscribe(setState);
+    return () => unsubscribe();
+  }, []);
+
+  return state;
+}
 
 export default function App() {
   const whisper = useRef<WhisperContext>();
@@ -38,7 +66,22 @@ export default function App() {
   const [showTargetModal, setShowTargetModal] = useState(false);
 
   const [activeTab, setActiveTab] = useState<'translation' | 'settings'>('translation');
-  const [modelInfo, setModelInfo] = useState<{ exists: boolean; size?: number, name?: string }>({ exists: false });
+
+  const { 
+    useCloudTranslation,
+    modelExists: translationModelExists,
+    modelName: translationModelName,
+    modelSize: translationModelSize,
+    isInitialized: translationInitialized 
+  } = useTranslationService();
+
+  const { 
+    modelExists: transcriptionModelExists,
+    modelName: transcriptionModelName,
+    modelSize: transcriptionModelSize,
+    isInitialized: transcriptionInitialized 
+  } = useTranscriptionService();
+
 
   useEffect(() => {
     // INIT WHISPER FOR TRANSCRIPTION
@@ -165,7 +208,6 @@ export default function App() {
   };
 
 
-
   useEffect(() => { async function translateTranscript() {
       if (transcript) {
         const translatedText = await translationService.translate(transcript, languageTwo, (languageTwo === 'en') ? languageOne : 'en');
@@ -174,7 +216,6 @@ export default function App() {
     }
   translateTranscript();
   }, [transcript]);
-
 
   // Clean up interval on component unmount
   useEffect(() => {
@@ -185,46 +226,19 @@ export default function App() {
     };
   }, []);
 
-  useEffect(() => {
-    // Check model info when settings tab is active
-    if (activeTab === 'settings') {
-      (async () => {
-        try {
-          const modelInfo = await translationService.updateModelInfo();
-          setModelInfo(modelInfo);
-        } catch (error) {
-          console.error('Error updating model info:', error);
-        }
-      })();
-    }
-  }, [activeTab]);
-
-
 
   useEffect(() => {
     // Initialize transcription
+    
     (async () => {
       try {
-        await transcriptionService.initialize(setLoadingStatus);
+        //await transcriptionService.initialize(setLoadingStatus);
         setIsModelInitialized(true);
+
+        await translationService.initialize(setLoadingStatus);
+
       } catch (error) {
         setLoadingStatus('Error initializing transcription: ' + error.message);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    // Initialize translation service
-    (async () => {
-      try {
-        await translationService.initialize(setLoadingStatus);
-        // Update state with service info
-
-        const modelInfo = await translationService.updateModelInfo();
-        setModelInfo(modelInfo);
-      } catch (error) {
-        console.error('Translation service initialization error:', error);
-        setLoadingStatus('Error: ' + error.message);
       }
     })();
   }, []);
@@ -233,11 +247,7 @@ export default function App() {
   const deleteModel = async () => {
     try {
       await translationService.deleteModel(setLoadingStatus);
-      const modelInfo = await translationService.updateModelInfo();
-      setModelInfo({
-        exists: modelInfo.exists,
-        size: modelInfo.size
-      });
+
     } catch (error) {
       console.error('Error deleting model:', error);
     }
@@ -269,12 +279,12 @@ export default function App() {
                   {langOptions.find(l => l.value === languageOne)?.label || 'Select'}
                 </Text>
                 <MaterialIcons 
-                    name="unfold-more" 
-                    size={24} 
-                    color="#007AFF" 
-                    style={styles.buttonIcon} 
-                    onPress={() => setShowSourceModal(true)}
-                  />
+                  name="unfold-more" 
+                  size={24} 
+                  color="#007AFF" 
+                  style={styles.buttonIcon} 
+                  onPress={() => setShowSourceModal(true)}
+                />
               </View>
               <MaterialIcons 
                 name="mic" 
@@ -344,22 +354,21 @@ export default function App() {
           <View style={styles.settingRow}>
             <Text style={styles.settingLabel}>Cloud Translation</Text>
             <Switch
-              value={translationService.useCloudTranslation}
+              value={useCloudTranslation}
               onValueChange={(value) => {
-                translationService.setCloudTranslation(!translationService.useCloudTranslation);
+                translationService.setCloudTranslation(value);
               }}
-              disabled={!translationService.isModelAvailable}
+              disabled={!translationInitialized}
             />
           </View>
 
-
           <View style={styles.settingRow}>
             <Text style={styles.settingLabel}>Translation Model</Text>
-            {modelInfo.exists ? (
+            {translationModelExists ? (
               <View style={styles.modelInfo}>
-                <Text style={styles.modelText}>{modelInfo.name}</Text>
+                <Text style={styles.modelText}>{translationModelName}</Text>
                 <Text style={styles.modelText}>Status: Downloaded</Text>
-                <Text style={styles.modelText}>Size: {(modelInfo.size / (1000000000)).toFixed(2)} GB</Text>
+                <Text style={styles.modelText}>Size: {(translationModelSize / (1000000000)).toFixed(2)} GB</Text>
                 <Button 
                   title="Delete Model" 
                   onPress={deleteModel}
@@ -368,9 +377,36 @@ export default function App() {
               </View>
             ) : (
               <View style={styles.modelInfo}>
-                <Text style={styles.modelText}>{translationService.modelName}</Text>
+                <Text style={styles.modelText}>{translationModelName}</Text>
                 <Text style={styles.modelText}>Status: Not Downloaded</Text>
-                <Text style={styles.modelText}>Size: {(translationService.modelSize / (1000000000)).toFixed(2)} GB</Text>
+                <Text style={styles.modelText}>Size: {(translationModelSize / (1000000000)).toFixed(2)} GB</Text>
+                <Button 
+                  title="Download Model" 
+                  onPress={() => translationService.downloadModel(setLoadingProgress, setLoadingStatus)}
+                  disabled={loadingProgress < 100 && loadingProgress > 0}
+                />
+              </View>
+            )}
+          </View>
+
+          <View style={styles.settingRow}>
+            <Text style={styles.settingLabel}>Translation Model</Text>
+            {transcriptionModelExists ? (
+              <View style={styles.modelInfo}>
+                <Text style={styles.modelText}>{transcriptionModelName}</Text>
+                <Text style={styles.modelText}>Status: Downloaded</Text>
+                <Text style={styles.modelText}>Size: {(transcriptionModelSize / (1000000000)).toFixed(2)} GB</Text>
+                <Button 
+                  title="Delete Model" 
+                  onPress={deleteModel}
+                  color="red"
+                />
+              </View>
+            ) : (
+              <View style={styles.modelInfo}>
+                <Text style={styles.modelText}>{transcriptionModelName}</Text>
+                <Text style={styles.modelText}>Status: Not Downloaded</Text>
+                <Text style={styles.modelText}>Size: {(transcriptionModelSize / (1000000000)).toFixed(2)} GB</Text>
                 <Button 
                   title="Download Model" 
                   onPress={() => translationService.downloadModel(setLoadingProgress, setLoadingStatus)}
@@ -646,3 +682,5 @@ const styles = StyleSheet.create({
     color: '#666',
   },
 });
+
+
