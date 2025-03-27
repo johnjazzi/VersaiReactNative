@@ -42,6 +42,7 @@ assets/models/*
 *.mlmodelc
 
 # ios
+ios/
 ios/Pods/
 ios/build/
 

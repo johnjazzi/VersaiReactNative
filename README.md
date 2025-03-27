@@ -24,6 +24,7 @@ sh ./models/download-ggml-model.sh base
 
 ```
 yarn install
+npx expo prebuild --clean
 cd ios
 pod install
 cd ..
