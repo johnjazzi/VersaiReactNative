@@ -1,8 +1,9 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, Button, Platform, ScrollView, Modal} from 'react-native';
+import { StyleSheet, Text, View, Button, Platform, ScrollView, Modal, Switch, TextInput, TouchableOpacity} from 'react-native';
 import {Picker} from '@react-native-picker/picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Asset } from 'expo-asset';
+import { LANGUAGE_MAP, LanguageMapping } from './services/Common';
 
 import { LogBox } from 'react-native';
 import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
@@ -10,7 +11,9 @@ import { useEffect, useState, useRef } from 'react';
 import React from 'react';
 import * as FileSystem from 'expo-file-system';
 
-import { initLlama, LlamaContext } from 'llama.rn';
+
+import { transcriptionService } from './services/TranscriptionService';
+import { translationService } from './services/TranslationService';
 
 
 export default function App() {
@@ -26,25 +29,26 @@ export default function App() {
   const autoSaveInterval = useRef<NodeJS.Timeout>();
   const stopRecordingRef = useRef<(() => void) | null>(null);
   
-  const [selectedLanguage, setSelectedLanguage] = useState<string>('pt');
+  const [languageOne, setLanguageOne] = useState<string>('pt');
+  const [languageTwo, setLanguageTwo] = useState<string>('en');
   const [langOptions, setLangOptions] = useState<{value: string, label: string}[]>([]);
-  const [recordingLanguage, setRecordingLanguage] = useState<string>('');
+  const [recordingLanguage, setRecordingLanguage] = useState<string>('pt');
 
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [showTargetModal, setShowTargetModal] = useState(false);
 
-  const [translationModel, setTranslationModel] = useState(null);
-  const [translationContext, setTranslationContext] = useState(null);
+  const [activeTab, setActiveTab] = useState<'translation' | 'settings'>('translation');
+  const [modelInfo, setModelInfo] = useState<{ exists: boolean; size?: number, name?: string }>({ exists: false });
 
   useEffect(() => {
     // INIT WHISPER FOR TRANSCRIPTION
     (async () => {
 
-      const lang_options = [ 
-        {value: 'french', label: 'French'}, 
-        {value: 'italian', label: 'Italian'}, 
-        {value: 'spanish', label: 'Spanish'}, 
-        {value: 'portuguese', label: 'Portuguese'}];
+      //TODO: fix this with common.ts
+      const lang_options = Object.entries(LANGUAGE_MAP).map(([key, value]: [string, LanguageMapping]) => ({
+        value: value.googleCode,
+        label: value.displayName
+      }));
       setLangOptions(lang_options)
 
       try {
@@ -69,7 +73,6 @@ export default function App() {
         setIsModelInitialized(true);
         setLoadingProgress(10);
 
-
         setLoadingProgress(100);
         setLoadingStatus('Ready!');
 
@@ -80,83 +83,8 @@ export default function App() {
     })();
   }, [isModelInitialized]);
 
-  useEffect(() => {
-    // INIT LLAMA FOR TRANSLATION
-    (async () => {
-      try {
-        setLoadingStatus('Checking for LLaMA model...');
-        
-        const modelName = 'llama-3.2-1b-instruct-q4_k_m.gguf';
-        const modelPath = `${FileSystem.documentDirectory}${modelName}`;
-        
-        console.log('LLaMA model path:', modelPath);
-        
-        const modelInfo = await FileSystem.getInfoAsync(modelPath);
-        console.log('Model exists?', modelInfo.exists);
-        
-        if (!modelInfo.exists) {
-          setLoadingStatus('Downloading LLaMA model...');
-          
-          const downloadResumable = FileSystem.createDownloadResumable(
-            'https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-IQ3_M.gguf',
-            modelPath,
-            {},
-            (downloadProgress) => {
-              const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
-              setLoadingProgress(Math.round(progress * 100));
-              setLoadingStatus(`Downloading LLaMA model: ${Math.round(progress * 100)}%`);
-            }
-          );
-          
-          const downloadResult = await downloadResumable.downloadAsync();
-          console.log('Download completed:', downloadResult);
-          
-          if (!downloadResult || !downloadResult.uri) {
-            throw new Error('Download failed');
-          }
-        }
-        
-        // Initialize Llama with the model
-        try {
-          setLoadingStatus('Initializing translation model...');
-          const llamaContext = await initLlama({
-            model: modelPath,
-            use_mlock: true,
-            n_ctx: 2048,
-            n_batch: 512,
-            n_gpu_layers: Platform.OS === 'ios' ? 1 : 0,
-          });
-          
-          setTranslationContext(llamaContext);
-          
-          // Add a test translation to verify the model works
-          setLoadingStatus('Testing translation model...');
-          try {
-
-            const test = await translateText("hello world", "english", "portuguese");
-            console.log('Test translation result:', test);
-            
-           } catch (testError) {
-            console.error('Test translation failed:', testError);
-            setLoadingStatus('Translation model initialized but test failed. Check console for details.');
-          }
-        } catch (llamaError) {
-          console.error('Llama initialization error:', llamaError);
-          setTranslationContext(null);
-          setLoadingStatus('Error initializing translation model. Some features may be unavailable.');
-        }
-        
-      } catch (error) {
-        console.error('Model loading error:', error);
-        setLoadingStatus('Error: ' + error.message);
-      }
-
-
-    })();
-  }, []);
-
   const saveToTranscriptionLog = async (text: string) => {
-    const translatedText = await translateText(text, recordingLanguage, (recordingLanguage === 'english') ? selectedLanguage : 'english');
+    const translatedText = await translationService.translate(text, languageTwo, (languageTwo === 'en') ? languageOne : 'en');
     
     if (text) {
       setTranscriptionLog(prev => [{
@@ -168,130 +96,79 @@ export default function App() {
   }
 
   const startRecording = async (language: string) => {
-    if (!whisper.current) return;
+    try {
+      if (!whisper.current) return;
+      
+      setRecordingLanguage(language);
 
-    setRecordingLanguage(language);
-    
-    // Set up audio session for iOS
-    if (Platform.OS === 'ios') {
-      await AudioSessionIos.setCategory(
-        AudioSessionIos.Category.PlayAndRecord,
-        [AudioSessionIos.CategoryOption.MixWithOthers]
-      );
-      await AudioSessionIos.setMode(AudioSessionIos.Mode.Default);
-      await AudioSessionIos.setActive(true);
-    }
-
-    const { stop, subscribe } = await whisper.current.transcribeRealtime();
-
-    setStopRecording(() => stop);
-
-    // First, store stopRecording in a ref when it's created
-    stopRecordingRef.current = stop;
-
-    if (autoSaveInterval.current) {
-      clearInterval(autoSaveInterval.current);
-    }
-    
-    autoSaveInterval.current = setInterval(async () => {
-      if (stop) {
-        stop();
-        startRecording(language);
-      }
-    }, 25000);
-
-    let currentTranscript = '';
-
-    subscribe(evt => {
-      const { isCapturing, data } = evt;
-      if (data?.result) {
-        currentTranscript = data.result;
-        setTranscript(currentTranscript);
+      if (Platform.OS === 'ios') {
+        await AudioSessionIos.setCategory(
+          AudioSessionIos.Category.PlayAndRecord,
+          [AudioSessionIos.CategoryOption.MixWithOthers]
+        );
+        await AudioSessionIos.setMode(AudioSessionIos.Mode.Default);
+        await AudioSessionIos.setActive(true);
       }
 
-      if (!isCapturing) {
-        // Clear interval when recording stops
-        if (autoSaveInterval.current) {
-          clearInterval(autoSaveInterval.current);
+      const { stop, subscribe } = await whisper.current.transcribeRealtime();
+
+      setStopRecording(() => stop);
+
+      // First, store stopRecording in a ref when it's created
+      stopRecordingRef.current = stop;
+
+      if (autoSaveInterval.current) {
+        clearInterval(autoSaveInterval.current);
+      }
+      
+      autoSaveInterval.current = setInterval(async () => {
+        if (stop) {
+          stop();
+          startRecording(language);
         }
-        saveToTranscriptionLog(currentTranscript);
-        setTranscript('');
-        setTranslatedTranscript('');
-        setStopRecording(null);
-      }
-    });
+      }, 25000);
+
+      let currentTranscript = '';
+
+      subscribe(evt => {
+        const { isCapturing, data } = evt;
+        if (data?.result) {
+          currentTranscript = data.result;
+          setTranscript(currentTranscript);
+        }
+
+        if (!isCapturing) {
+          // Clear interval when recording stops
+          if (autoSaveInterval.current) {
+            clearInterval(autoSaveInterval.current);
+          }
+          saveToTranscriptionLog(currentTranscript);
+          setTranscript('');
+          setTranslatedTranscript('');
+          setStopRecording(null);
+        }
+      });
+    } catch (error) {
+      console.error('Recording error:', error);
+    }
   };
 
   const switchSpeaker = async () => {
     if (stopRecording) {
       stopRecording();
       await new Promise(resolve => setTimeout(resolve, 50));
-      //setCurrentSpeaker(prev => prev === 'Speaker 1' ? 'Speaker 2' : 'Speaker 1');
-      if (recordingLanguage === 'en') 
-        { startRecording(selectedLanguage); }
+      if (languageTwo === 'en') 
+        { startRecording(languageOne); }
       else 
         { startRecording('en'); }
     }
   };
 
-  const translateText = async (text: string, sourceLang: string, targetLang: string) => {
-    if (!text || !translationContext) return text;
-    
-    try {
-      // Create a prompt for translation
-      // Format the prompt based on the language codes
-      const sourceLanguageName = sourceLang;
-      const targetLanguageName = targetLang;
-      
-      const stopWords = ['</s>', '<|end|>', '<|eot_id|>', '<|end_of_text|>', '<|im_end|>', '<|EOT|>', '<|END_OF_TURN_TOKEN|>', '<|end_of_turn|>', '<|endoftext|>']
 
-      const prompt = `
-        <|start_header_id|>system<|end_header_id|>
-        You are a translation assistant. Please translate the given text to the target language accurately while preserving the meaning.
-        user input is formatted as: text <target=language>
-
-        <|eot_id|><|start_header_id|>user input<|end_header_id|>
-        ${text} 
-        <target=${targetLanguageName}>
-        <|eot_id|>
-        <|start_header_id|>translation<|end_header_id|>
-      `;
-      
-      // Run inference
-      const textResult = await translationContext.completion({
-        prompt,
-        n_predict: text.length+20,
-        stop: [...stopWords, 'Llama:', 'User:', '\n\n'],
-        temperature: 0.7,
-        top_p: 0.95,
-        repeat_penalty: 1.2,
-      });
-      
-      return textResult.text;
-    } catch (error) {
-      console.error('Translation error:', error);
-      return text;
-    }
-  };
-
-  // Helper function to get full language name from code
-  const getLanguageName = (code: string) => {
-    const languageMap = {
-      'en': 'English',
-      'fr': 'French',
-      'es': 'Spanish',
-      'it': 'Italian',
-      'pt': 'Portuguese',
-      // Add more languages as needed
-    };
-    
-    return languageMap[code] || code;
-  };
 
   useEffect(() => { async function translateTranscript() {
       if (transcript) {
-
-        const translatedText = await translateText(transcript, recordingLanguage, (recordingLanguage === 'en') ?  selectedLanguage : 'en');
+        const translatedText = await translationService.translate(transcript, languageTwo, (languageTwo === 'en') ? languageOne : 'en');
         setTranslatedTranscript(translatedText);
       }
     }
@@ -308,89 +185,202 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    // Check model info when settings tab is active
+    if (activeTab === 'settings') {
+      (async () => {
+        try {
+          const modelInfo = await translationService.updateModelInfo();
+          setModelInfo(modelInfo);
+        } catch (error) {
+          console.error('Error updating model info:', error);
+        }
+      })();
+    }
+  }, [activeTab]);
+
+
+
+  useEffect(() => {
+    // Initialize transcription
+    (async () => {
+      try {
+        await transcriptionService.initialize(setLoadingStatus);
+        setIsModelInitialized(true);
+      } catch (error) {
+        setLoadingStatus('Error initializing transcription: ' + error.message);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    // Initialize translation service
+    (async () => {
+      try {
+        await translationService.initialize(setLoadingStatus);
+        // Update state with service info
+
+        const modelInfo = await translationService.updateModelInfo();
+        setModelInfo(modelInfo);
+      } catch (error) {
+        console.error('Translation service initialization error:', error);
+        setLoadingStatus('Error: ' + error.message);
+      }
+    })();
+  }, []);
+
+
+  const deleteModel = async () => {
+    try {
+      await translationService.deleteModel(setLoadingStatus);
+      const modelInfo = await translationService.updateModelInfo();
+      setModelInfo({
+        exists: modelInfo.exists,
+        size: modelInfo.size
+      });
+    } catch (error) {
+      console.error('Error deleting model:', error);
+    }
+  };
+
   return (
     <View style={styles.container}>
-      <View style={[styles.topSection, { position: 'relative' }]}>
-        <View style={styles.row}>
-          <View style={styles.buttonWithIcon}>
-            <Text style={styles.languageText}>
-              {langOptions.find(l => l.value === selectedLanguage)?.label || 'Select'}
-            </Text>
-            <MaterialIcons 
-                name="unfold-more" 
-                size={24} 
-                color="#007AFF" 
-                style={styles.buttonIcon} 
-                onPress={() => setShowSourceModal(true)}
-              />
-              {/* {!translator_rom_to_en && (
-                <MaterialIcons name="error" size={24} color="red" />
-              )} */}
-          </View>
-          <MaterialIcons 
-            name="mic" 
-            size={28} 
-            color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
-            onPress={() => startRecording(selectedLanguage)}
-            style={styles.iconButton}
-          />
-        </View>
-
-        <View style={styles.row}>
-          <View style={styles.buttonWithIcon}>
-            <Text style={styles.languageText}>English</Text>
-            <MaterialIcons 
-              name="unfold-more" 
-              size={24} 
-              color="#007AFF" 
-              style={styles.buttonIcon} 
-              onPress={() => setShowTargetModal(true)}
-            />
-            {/* {!translator_en_to_rom && (
-              <MaterialIcons name="error" size={24} color="red" />
-            )} */}
-
-          </View>
-          <MaterialIcons 
-            name="mic" 
-            size={28} 
-            color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
-            onPress={() => startRecording('en')}
-            style={styles.iconButton}
-          />
-        </View>
-
-        <View style={styles.row}>
-          <Button 
-            title="Stop" 
-            onPress={() => stopRecording?.()} 
-            disabled={!stopRecording}
-          />
-          <Button 
-            title="Switch Speaker" 
-            onPress={switchSpeaker}
-            disabled={!stopRecording}
-          />
-        </View>
-
-        <View style={styles.transcriptContainer}>
-          {stopRecording && <Text style={styles.recordingLabel}>Recording in {recordingLanguage}...</Text>}
-          <Text>{translatedTranscript}</Text>
-          <Text style={{color: '#888', fontSize: 14}}>{transcript}</Text>
-        </View>
+      <View style={styles.tabBar}>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'translation' && styles.activeTab]} 
+          onPress={() => setActiveTab('translation')}
+        >
+          <Text style={[styles.tabText, activeTab === 'translation' && styles.activeTabText]}>Translation</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'settings' && styles.activeTab]} 
+          onPress={() => setActiveTab('settings')}
+        >
+          <Text style={[styles.tabText, activeTab === 'settings' && styles.activeTabText]}>Settings</Text>
+        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.logContainer}>
-        {transcriptionLog.map((item, index) => (
-          <View key={index} style={styles.logItem}>
-            <Text style={styles.logTimestamp}>{item.timestamp.toLocaleTimeString()}</Text>
-            <Text>{item.translatedText}</Text>
-            {item.text && (
-              <Text style={{color: '#888', fontSize: 14}}>{item.text}</Text>
+      {activeTab === 'translation' ? (
+        <View style={styles.content}>
+          <View style={[styles.topSection, { position: 'relative' }]}>
+            <View style={styles.row}>
+              <View style={styles.buttonWithIcon}>
+                <Text style={styles.languageText}>
+                  {langOptions.find(l => l.value === languageOne)?.label || 'Select'}
+                </Text>
+                <MaterialIcons 
+                    name="unfold-more" 
+                    size={24} 
+                    color="#007AFF" 
+                    style={styles.buttonIcon} 
+                    onPress={() => setShowSourceModal(true)}
+                  />
+              </View>
+              <MaterialIcons 
+                name="mic" 
+                size={28} 
+                color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
+                onPress={() => startRecording(languageOne)}
+                style={styles.iconButton}
+              />
+            </View>
+
+            <View style={styles.row}>
+              <View style={styles.buttonWithIcon}>
+                <Text style={styles.languageText}>
+                  {langOptions.find(l => l.value === languageTwo)?.label || 'Select'}
+                </Text>
+                <MaterialIcons 
+                  name="unfold-more" 
+                  size={24} 
+                  color="#007AFF" 
+                  style={styles.buttonIcon} 
+                  onPress={() => setShowTargetModal(true)}
+                />
+              </View>
+              <MaterialIcons 
+                name="mic" 
+                size={28} 
+                color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
+                onPress={() => startRecording(languageTwo)}
+                style={styles.iconButton}
+              />
+            </View>
+
+            <View style={styles.row}>
+              <Button 
+                title="Stop" 
+                onPress={() => stopRecording?.()} 
+                disabled={!stopRecording}
+              />
+              <Button 
+                title="Switch Speaker" 
+                onPress={switchSpeaker}
+                disabled={!stopRecording}
+              />
+            </View>
+
+            <View style={styles.transcriptContainer}>
+              {stopRecording && <Text style={styles.recordingLabel}>Recording in {languageTwo}...</Text>}
+              <Text>{translatedTranscript}</Text>
+              <Text style={{color: '#888', fontSize: 14}}>{transcript}</Text>
+            </View>
+          </View>
+
+          <ScrollView style={styles.logContainer}>
+            {transcriptionLog.map((item, index) => (
+              <View key={index} style={styles.logItem}>
+                <Text style={styles.logTimestamp}>{item.timestamp.toLocaleTimeString()}</Text>
+                <Text>{item.translatedText}</Text>
+                {item.text && (
+                  <Text style={{color: '#888', fontSize: 14}}>{item.text}</Text>
+                )}
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      ) : (
+        <View style={styles.settingsContainer}>
+          <View style={styles.settingRow}>
+            <Text style={styles.settingLabel}>Cloud Translation</Text>
+            <Switch
+              value={translationService.useCloudTranslation}
+              onValueChange={(value) => {
+                translationService.setCloudTranslation(!translationService.useCloudTranslation);
+              }}
+              disabled={!translationService.isModelAvailable}
+            />
+          </View>
+
+
+          <View style={styles.settingRow}>
+            <Text style={styles.settingLabel}>Translation Model</Text>
+            {modelInfo.exists ? (
+              <View style={styles.modelInfo}>
+                <Text style={styles.modelText}>{modelInfo.name}</Text>
+                <Text style={styles.modelText}>Status: Downloaded</Text>
+                <Text style={styles.modelText}>Size: {(modelInfo.size / (1000000000)).toFixed(2)} GB</Text>
+                <Button 
+                  title="Delete Model" 
+                  onPress={deleteModel}
+                  color="red"
+                />
+              </View>
+            ) : (
+              <View style={styles.modelInfo}>
+                <Text style={styles.modelText}>{translationService.modelName}</Text>
+                <Text style={styles.modelText}>Status: Not Downloaded</Text>
+                <Text style={styles.modelText}>Size: {(translationService.modelSize / (1000000000)).toFixed(2)} GB</Text>
+                <Button 
+                  title="Download Model" 
+                  onPress={() => translationService.downloadModel(setLoadingProgress, setLoadingStatus)}
+                  disabled={loadingProgress < 100 && loadingProgress > 0}
+                />
+              </View>
             )}
           </View>
-        ))}
-      </ScrollView>
+        </View>
+      )}
 
       {loadingProgress < 100 && (
         <View style={styles.loadingOverlay}>
@@ -418,7 +408,7 @@ export default function App() {
                 key={lang.value}
                 title={lang.label}
                 onPress={() => {
-                  setSelectedLanguage(lang.value);
+                  setLanguageOne(lang.value);
                   setShowSourceModal(false);
                 }}
               />
@@ -436,11 +426,21 @@ export default function App() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Button title="English" onPress={() => setShowTargetModal(false)} />
+            {langOptions.map((lang) => (
+              <Button
+                key={lang.value}
+                title={lang.label}
+                onPress={() => {
+                  setLanguageTwo(lang.value);
+                  setShowTargetModal(false);
+                }}
+              />
+            ))}
             <Button title="Cancel" onPress={() => setShowTargetModal(false)} />
           </View>
         </View>
       </Modal>
+
     </View>
   );
 }
@@ -564,5 +564,85 @@ const styles = StyleSheet.create({
     height: 8,
     backgroundColor: 'red',
     borderRadius: 4,
+  },
+  translationModeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  apiKeyInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 5,
+    padding: 10,
+    marginBottom: 10,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  activeTab: {
+    borderBottomWidth: 3,
+    borderBottomColor: '#007AFF',
+  },
+  tabText: {
+    fontSize: 16,
+    color: '#666',
+  },
+  activeTabText: {
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  content: {
+    flex: 1,
+  },
+  settingsContainer: {
+    flex: 1,
+    padding: 20,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  settingLabel: {
+    fontSize: 16,
+  },
+  modelSection: {
+    marginTop: 20,
+    padding: 15,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  modelInfo: {
+    gap: 8,
+    margin:8,
+
+  },
+  modelText: {
+    fontSize: 14,
+    color: '#666',
   },
 });

@@ -20,6 +20,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.VersaiReactNative",
+      "developmentTeam": "johnjazzinaro@gmail.com",
       "icon": "./assets/icon.png",
       "splash": {
         "image": "./assets/splash-icon.png",
