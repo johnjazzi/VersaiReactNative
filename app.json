@@ -30,6 +30,7 @@
       },
       "infoPlist": {
         "NSMicrophoneUsageDescription": "This app needs access to the microphone to record audio.",
+        "NSSpeechRecognitionUsageDescription": "This app needs access to speech recognition to translate text" ,
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true
       }

@@ -1,8 +1,9 @@
 import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 import { initLlama, LlamaContext } from 'llama.rn';
-import { LANGUAGE_MAP, LanguageMapping } from './Common';
+import { LANGUAGE_MAP, LanguageMapping , getAppleCodeFromGoogleCode } from './Common';
 import { useEffect, useState, useRef } from 'react';
+import { useIOSTranslateTasks } from 'react-native-ios-translate-tasks';
 
 
 export interface TranslationServiceState {
@@ -40,6 +41,7 @@ export class TranslationService {
   private _exists: boolean = false;
   private _isInitialized: boolean = false;
   private _useCloudTranslation: boolean = true;
+  private _iosTranslateContext: any | null = null;
   private context: LlamaContext | null = null;
   private settings: TranslationSettings = {
     useCloudTranslation: true,
@@ -52,8 +54,18 @@ export class TranslationService {
     return this.settings.googleApiKey || '';
   }
 
+  setIOSTranslateContext(context: any): void {
+    this._iosTranslateContext = context;
+  }
+
   async setCloudTranslation(value: boolean): Promise<void> {
     this.settings.useCloudTranslation = value;
+    console.log('setting cloud translation to', value)
+    if (value) { 
+      const test = await this.IOSTranslate("hello world", "en", "pt");
+      console.log(test)
+    }
+
     this.notifyListeners();
   }
 
@@ -99,8 +111,10 @@ export class TranslationService {
     setLoadingStatus?: (status: string) => void , 
     setLoadingProgress?: (progress: number) => void) {
     try {
+
       console.log('Initializing translation model...');
       setLoadingStatus?.('Initializing translation model...')
+      setLoadingProgress?.(10);
 
       if (this._isInitialized) {
         console.log('Translation model already initialized');
@@ -119,7 +133,9 @@ export class TranslationService {
 
       this._modelSize = modelInfo.size;
       this._exists = true;
+      this.notifyListeners();
       
+      setLoadingProgress?.(40);
       this.context = await initLlama({
         model: this._modelPath,
         use_mlock: true,
@@ -128,8 +144,9 @@ export class TranslationService {
       });
 
       setLoadingStatus?.('Translation model loaded');
+      setLoadingProgress?.(80);
       console.log('Translation model initialized');
-
+      
       // Test translation
       setLoadingStatus?.('Warming Translation Model...');
       this.settings.useCloudTranslation = false;
@@ -137,7 +154,9 @@ export class TranslationService {
       console.log(test)
       this._isInitialized = true;
       this.notifyListeners();
-
+      setLoadingStatus?.('Done!');
+      setLoadingProgress?.(100);
+      return;
 
     } catch (error) {
       this._isInitialized = false;
@@ -248,7 +267,7 @@ export class TranslationService {
       const prompt = `
       <|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
-      convert the following text from ${sourceLang} to ${targetLang}:<|eot_id|><|start_header_id|>user<|end_header_id|>
+      convert the following text from ${sourceLang} to ${targetLang}, return only the translated text and nothing else<|eot_id|><|start_header_id|>user<|end_header_id|>
 
       ${text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
       `
@@ -268,12 +287,39 @@ export class TranslationService {
     }
   }
 
+  async IOSTranslate(text: string, sourceLang: string, targetLang: string): Promise<string> {
+    if (!text) return text;
+    console.log('trying to translate with IOS Translate')
+    console.log('translating with IOS Translate')
+
+    const sourceAppleCode = getAppleCodeFromGoogleCode(sourceLang);
+    const targetAppleCode = getAppleCodeFromGoogleCode(targetLang);
+
+    console.log('sourceAppleCode', sourceAppleCode)
+    console.log('targetAppleCode', targetAppleCode)
+
+
+    try {
+      const { translatedTexts } = await this._iosTranslateContext.startIOSTranslateTasks(
+        [text],
+        {
+          sourceLanguage:  sourceAppleCode,
+          targetLanguage: targetAppleCode,
+        }
+      );
+      return translatedTexts[0] || text; // Return first translation or original text if failed
+    } catch (error) {
+      console.error('iOS translation error:', error);
+      throw error;
+    }
+  }
+
   async translate(text: string, sourceLang: string, targetLang: string): Promise<string> {
     if (!text) return text;
     
     try {
       if (this.settings.useCloudTranslation) {
-        return this.cloudTranslate(text, sourceLang, targetLang);
+        return this.IOSTranslate(text, sourceLang, targetLang)
       } else if (this.context) {
         return this.deviceTranslate(text, sourceLang, targetLang);
       } else {
@@ -309,6 +355,18 @@ export class TranslationService {
     listener(this.getState());
     return () => {this.listeners.delete(listener);}
   }
+
 }
 
 export const translationService = new TranslationService(); 
+
+
+export function useIOSTranslateContext() {
+  const iosTranslateContext = useIOSTranslateTasks();
+  
+  useEffect(() => {
+    if (iosTranslateContext) {
+      translationService.setIOSTranslateContext(iosTranslateContext);
+    }
+  }, [iosTranslateContext]);
+}

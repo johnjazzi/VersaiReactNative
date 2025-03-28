@@ -54,6 +54,8 @@
     </dict>
     <key>NSMicrophoneUsageDescription</key>
     <string>This app needs access to the microphone to record audio.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>This app needs access to speech recognition to translate text</string>
     <key>UIFileSharingEnabled</key>
     <true/>
     <key>UILaunchStoryboardName</key>

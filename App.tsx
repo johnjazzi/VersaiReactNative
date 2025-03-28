@@ -1,6 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, Button, Platform, ScrollView, Modal, Switch, TextInput, TouchableOpacity} from 'react-native';
-import {Picker} from '@react-native-picker/picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LANGUAGE_MAP, LanguageMapping } from './services/Common';
 
@@ -8,14 +7,14 @@ import { LogBox } from 'react-native';
 import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
 import { useEffect, useState, useRef } from 'react';
 import React from 'react';
-import * as FileSystem from 'expo-file-system';
+import Constants from 'expo-constants';
 
+import { IOSTranslateTasksProvider } from "react-native-ios-translate-tasks";
 
 import { transcriptionService , useTranscriptionService , TranscriptionServiceState } from './services/TranscriptionService';
-import { translationService , useTranslationService , TranslationServiceState } from './services/TranslationService';
+import { translationService , useTranslationService , TranslationServiceState, useIOSTranslateContext } from './services/TranslationService';
 
-
-export default function App() {
+export function Main() {
   const whisper = useRef<WhisperContext>();
   const [stopRecording, setStopRecording] = useState<(() => void) | null>(null);
   const [isModelInitialized, setIsModelInitialized] = useState(false);
@@ -38,6 +37,8 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState<'translation' | 'settings'>('translation');
 
+  useIOSTranslateContext();
+
   const { 
     useCloudTranslation,
     modelExists: translationModelExists,
@@ -56,6 +57,7 @@ export default function App() {
 
 
   useEffect(() => {
+    
     // INIT 
     (async () => {
 
@@ -69,13 +71,10 @@ export default function App() {
       // INIT Models
       try {
         console.log('Initializing models...');
-        if (transcriptionInitialized || translationInitialized) { 
-          console.log('Models already initialized');
-          return
-        }
 
-        await transcriptionService.initialize(setLoadingStatus, setLoadingProgress);
-        await translationService.initialize(setLoadingStatus, setLoadingProgress);
+        !transcriptionInitialized? await transcriptionService.initialize(setLoadingStatus, setLoadingProgress): null;
+        !translationInitialized? await translationService.initialize(setLoadingStatus, setLoadingProgress): null;
+
         setIsModelInitialized(true);
       } catch (error: any) {
         setLoadingStatus('Error initializing models: ' + error.message);
@@ -85,7 +84,13 @@ export default function App() {
   }, [isModelInitialized]);
 
   const saveToTranscriptionLog = async (text: string) => {
-    const translatedText = await translationService.translate(text, languageTwo, (languageTwo === 'en') ? languageOne : 'en');
+
+    //TODO: add the language of the recording and translation to the transcription log like English -> Portugese
+    const translatedText = await translationService.translate(
+      text, 
+      recordingLanguage, 
+      (recordingLanguage === languageOne) ? languageTwo : languageOne
+    );
     
     if (text) {
       setTranscriptionLog(prev => [{
@@ -97,6 +102,9 @@ export default function App() {
   }
 
   const startRecording = async (language: string) => {
+
+    //TDOD: Show a dot that is recording and a waveform so that user can see their voice is being picked up
+
     try {
       if (!transcriptionContext) return;
       
@@ -169,7 +177,6 @@ export default function App() {
   }, []);
 
 
-
   const deleteModel = async () => {
     try {
       await translationService.deleteModel(setLoadingStatus);
@@ -181,235 +188,258 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.tabBar}>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'translation' && styles.activeTab]} 
-          onPress={() => setActiveTab('translation')}
-        >
-          <Text style={[styles.tabText, activeTab === 'translation' && styles.activeTabText]}>Translation</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'settings' && styles.activeTab]} 
-          onPress={() => setActiveTab('settings')}
-        >
-          <Text style={[styles.tabText, activeTab === 'settings' && styles.activeTabText]}>Settings</Text>
-        </TouchableOpacity>
-      </View>
+    <View style={styles.tabBar}>
+      <TouchableOpacity 
+        style={[styles.tab, activeTab === 'translation' && styles.activeTab]} 
+        onPress={() => setActiveTab('translation')}
+      >
+        <Text style={[styles.tabText, activeTab === 'translation' && styles.activeTabText]}>Translation</Text>
+      </TouchableOpacity>
+      <TouchableOpacity 
+        style={[styles.tab, activeTab === 'settings' && styles.activeTab]} 
+        onPress={() => setActiveTab('settings')}
+      >
+        <Text style={[styles.tabText, activeTab === 'settings' && styles.activeTabText]}>Settings</Text>
+      </TouchableOpacity>
+    </View>
 
-      {activeTab === 'translation' ? (
-        <View style={styles.content}>
-          <View style={[styles.topSection, { position: 'relative' }]}>
-            <View style={styles.row}>
-              <View style={styles.buttonWithIcon}>
-                <Text style={styles.languageText}>
-                  {langOptions.find(l => l.value === languageOne)?.label || 'Select'}
-                </Text>
-                <MaterialIcons 
-                  name="unfold-more" 
-                  size={24} 
-                  color="#007AFF" 
-                  style={styles.buttonIcon} 
-                  onPress={() => setShowSourceModal(true)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                />
-              </View>
+    {activeTab === 'translation' ? (
+      <View style={styles.content}>
+        <View style={[styles.topSection, { position: 'relative' }]}>
+          <View style={styles.row}>
+            <View style={styles.buttonWithIcon}>
+              <Text style={styles.languageText}>
+                {langOptions.find(l => l.value === languageOne)?.label || 'Select'}
+              </Text>
               <MaterialIcons 
-                name="mic" 
-                size={28} 
-                color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
-                onPress={() => startRecording(languageOne)}
-                style={styles.iconButton}
+                name="unfold-more" 
+                size={24} 
+                color="#007AFF" 
+                style={styles.buttonIcon} 
+                onPress={() => setShowSourceModal(true)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               />
             </View>
-
-            <View style={styles.row}>
-              <View style={styles.buttonWithIcon}>
-                <Text style={styles.languageText}>
-                  {langOptions.find(l => l.value === languageTwo)?.label || 'Select'}
-                </Text>
-                <MaterialIcons 
-                  name="unfold-more" 
-                  size={24} 
-                  color="#007AFF" 
-                  style={styles.buttonIcon} 
-                  onPress={() => setShowTargetModal(true)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                />
-              </View>
-              <MaterialIcons 
-                name="mic" 
-                size={28} 
-                color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
-                onPress={() => startRecording(languageTwo)}
-                style={styles.iconButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              />
-            </View>
-
-            <View style={styles.row}>
-              <Button 
-                title="Stop" 
-                onPress={() => stopRecording?.()} 
-                disabled={!stopRecording}
-              />
-              <Button 
-                title="Switch Speaker" 
-                onPress={switchSpeaker}
-                disabled={!stopRecording}
-              />
-            </View>
-
-            <View style={styles.transcriptContainer}>
-              {stopRecording && <Text style={styles.recordingLabel}>Recording in {languageTwo}...</Text>}
-              <Text>{translatedTranscript}</Text>
-              <Text style={{color: '#888', fontSize: 14}}>{transcript}</Text>
-            </View>
-          </View>
-
-          <ScrollView style={styles.logContainer}>
-            {transcriptionLog.map((item, index) => (
-              <View key={index} style={styles.logItem}>
-                <Text style={styles.logTimestamp}>{item.timestamp.toLocaleTimeString()}</Text>
-                <Text>{item.translatedText}</Text>
-                {item.text && (
-                  <Text style={{color: '#888', fontSize: 14}}>{item.text}</Text>
-                )}
-              </View>
-            ))}
-          </ScrollView>
-        </View>
-      ) : (
-        <View style={styles.settingsContainer}>
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Cloud Translation</Text>
-            <Switch
-              value={useCloudTranslation}
-              onValueChange={(value) => {
-                translationService.setCloudTranslation(value);
-              }}
-              disabled={!translationInitialized}
+            <MaterialIcons 
+              name="mic" 
+              size={28} 
+              color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
+              onPress={() => startRecording(languageOne)}
+              style={styles.iconButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             />
           </View>
 
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Translation Model</Text>
-            {translationModelExists ? (
-              <View style={styles.modelInfo}>
-                <Text style={styles.modelText}>{translationModelName}</Text>
-                <Text style={styles.modelText}>Status: Downloaded</Text>
-                <Text style={styles.modelText}>Size: {(translationModelSize / (1000000000)).toFixed(2)} GB</Text>
-                <Button 
-                  title="Delete Model" 
-                  onPress={deleteModel}
-                  color="red"
-                />
-              </View>
-            ) : (
-              <View style={styles.modelInfo}>
-                <Text style={styles.modelText}>{translationModelName}</Text>
-                <Text style={styles.modelText}>Status: Not Downloaded</Text>
-                <Text style={styles.modelText}>Size: {(translationModelSize / (1000000000)).toFixed(2)} GB</Text>
-                <Button 
-                  title="Download Model" 
-                  onPress={() => translationService.downloadModel(setLoadingProgress, setLoadingStatus)}
-                  disabled={loadingProgress < 100 && loadingProgress > 0}
-                />
-              </View>
-            )}
-          </View>
-
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Transcription Model</Text>
-            {transcriptionModelExists ? (
-              <View style={styles.modelInfo}>
-                <Text style={styles.modelText}>{transcriptionModelName}</Text>
-                <Text style={styles.modelText}>Status: Downloaded</Text>
-                <Text style={styles.modelText}>Size: {(transcriptionModelSize / (1000000000)).toFixed(2)} GB</Text>
-                <Button 
-                  title="Delete Model" 
-                  onPress={deleteModel}
-                  color="red"
-                />
-              </View>
-            ) : (
-              <View style={styles.modelInfo}>
-                <Text style={styles.modelText}>{transcriptionModelName}</Text>
-                <Text style={styles.modelText}>Status: Not Downloaded</Text>
-                <Text style={styles.modelText}>Size: {(transcriptionModelSize / (1000000000)).toFixed(2)} GB</Text>
-                <Button 
-                  title="Download Model" 
-                  onPress={() => transcriptionService.downloadModel(setLoadingProgress, setLoadingStatus)}
-                  disabled={loadingProgress < 100 && loadingProgress > 0}
-                />
-              </View>
-            )}
-          </View>
-        </View>
-      )}
-
-      {loadingProgress < 100 && (
-        <View style={styles.loadingOverlay}>
-          <View style={styles.loadingContainer}>
-            <Text>{loadingStatus}</Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progress, { width: `${loadingProgress}%` }]} />
+          <View style={styles.row}>
+            <View style={styles.buttonWithIcon}>
+              <Text style={styles.languageText}>
+                {langOptions.find(l => l.value === languageTwo)?.label || 'Select'}
+              </Text>
+              <MaterialIcons 
+                name="unfold-more" 
+                size={24} 
+                color="#007AFF" 
+                style={styles.buttonIcon} 
+                onPress={() => setShowTargetModal(true)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              />
             </View>
+            <MaterialIcons 
+              name="mic" 
+              size={28} 
+              color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
+              onPress={() => startRecording(languageTwo)}
+              style={styles.iconButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            />
+          </View>
+
+          <View style={styles.row}>
+            <Button 
+              title="Stop" 
+              onPress={() => stopRecording?.()} 
+              disabled={!stopRecording}
+            />
+            <Button 
+              title="Switch Speaker" 
+              onPress={switchSpeaker}
+              disabled={!stopRecording}
+            />
+          </View>
+
+          <View style={styles.transcriptContainer}>
+            {/* TODO: show names of languges correctly not just shorthand */}
+            {stopRecording && <Text style={styles.recordingLabel}>Recording in {recordingLanguage}...</Text>} 
+            <Text>{translatedTranscript}</Text>
+            <Text style={{color: '#888', fontSize: 14}}>{transcript}</Text>
           </View>
         </View>
-      )}
 
-      <StatusBar style="auto" />
+        <ScrollView style={styles.logContainer}>
+          {transcriptionLog.map((item, index) => (
+            <View key={index} style={styles.logItem}>
+              <Text style={styles.logTimestamp}>{item.timestamp.toLocaleTimeString()}</Text>
+              <Text>{item.translatedText}</Text>
+              {item.text && (
+                <Text style={{color: '#888', fontSize: 14}}>{item.text}</Text>
+              )}
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    ) : (
+      <View style={styles.settingsContainer}>
+        <View style={styles.settingRow}>
+          <Text style={styles.settingLabel}>Native Translation</Text>
+          <Switch
+            value={useCloudTranslation}
+            onValueChange={(value) => {
+              translationService.setCloudTranslation(value);
+            }}
+            disabled={!translationInitialized}
+          />
+        </View>
 
-      <Modal
-        visible={showSourceModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowSourceModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {langOptions.map((lang) => (
-              <Button
-                key={lang.value}
-                title={lang.label}
-                onPress={() => {
-                  setLanguageOne(lang.value);
-                  setShowSourceModal(false);
-                }}
+        <View style={styles.settingRow}>
+          <Text style={styles.settingLabel}>Translation Model</Text>
+          {translationModelExists ? (
+            <View style={styles.modelInfo}>
+              <Text style={styles.modelText}>{translationModelName}</Text>
+              <Text style={styles.modelText}>Status: Downloaded</Text>
+              <Text style={styles.modelText}>Size: {(translationModelSize / (1000000000)).toFixed(2)} GB</Text>
+              <Button 
+                title="Delete Model" 
+                onPress={deleteModel}
+                color="red"
               />
-            ))}
-            <Button title="Cancel" onPress={() => setShowSourceModal(false)} />
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={showTargetModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowTargetModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {langOptions.map((lang) => (
-              <Button
-                key={lang.value}
-                title={lang.label}
-                onPress={() => {
-                  setLanguageTwo(lang.value);
-                  setShowTargetModal(false);
-                }}
+            </View>
+          ) : (
+            <View style={styles.modelInfo}>
+              <Text style={styles.modelText}>{translationModelName}</Text>
+              <Text style={styles.modelText}>Status: Not Downloaded</Text>
+              <Text style={styles.modelText}>Size: {(translationModelSize / (1000000000)).toFixed(2)} GB</Text>
+              <Button 
+                title="Download Model" 
+                onPress={() => translationService.downloadModel(setLoadingProgress, setLoadingStatus)}
+                disabled={loadingProgress < 100 && loadingProgress > 0}
               />
-            ))}
-            <Button title="Cancel" onPress={() => setShowTargetModal(false)} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.settingRow}>
+          <Text style={styles.settingLabel}>Transcription Model</Text>
+          {transcriptionModelExists ? (
+            <View style={styles.modelInfo}>
+              <Text style={styles.modelText}>{transcriptionModelName}</Text>
+              <Text style={styles.modelText}>Status: Downloaded</Text>
+              <Text style={styles.modelText}>Size: {(transcriptionModelSize / (1000000000)).toFixed(2)} GB</Text>
+              <Button 
+                title="Delete Model" 
+                onPress={deleteModel}
+                color="red"
+              />
+            </View>
+          ) : (
+            <View style={styles.modelInfo}>
+              <Text style={styles.modelText}>{transcriptionModelName}</Text>
+              <Text style={styles.modelText}>Status: Not Downloaded</Text>
+              <Text style={styles.modelText}>Size: {(transcriptionModelSize / (1000000000)).toFixed(2)} GB</Text>
+              <Button 
+                title="Download Model" 
+                onPress={() => transcriptionService.downloadModel(setLoadingProgress, setLoadingStatus)}
+                disabled={loadingProgress < 100 && loadingProgress > 0}
+              />
+            </View>
+          )}
+        </View>
+      </View>
+    )}
+
+    {loadingProgress < 100 && (
+      <View style={styles.loadingOverlay}>
+        <View style={styles.loadingContainer}>
+          <Text>{loadingStatus}</Text>
+          <View style={styles.progressBar}>
+            <View style={[styles.progress, { width: `${loadingProgress}%` }]} />
           </View>
         </View>
-      </Modal>
+      </View>
+    )}
 
-    </View>
+    <StatusBar style="auto" />
+
+    <Modal
+      visible={showSourceModal}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={() => setShowSourceModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          {langOptions.map((lang) => (
+            <Button
+              key={lang.value}
+              title={lang.label}
+              onPress={() => {
+                setLanguageOne(lang.value);
+                setShowSourceModal(false);
+              }}
+            />
+          ))}
+          <Button title="Cancel" onPress={() => setShowSourceModal(false)} />
+        </View>
+      </View>
+    </Modal>
+
+    <Modal
+      visible={showTargetModal}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={() => setShowTargetModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          {langOptions.map((lang) => (
+            <Button
+              key={lang.value}
+              title={lang.label}
+              onPress={() => {
+                setLanguageTwo(lang.value);
+                setShowTargetModal(false);
+              }}
+            />
+          ))}
+          <Button title="Cancel" onPress={() => setShowTargetModal(false)} />
+        </View>
+      </View>
+    </Modal>
+
+  </View>
   );
 }
+
+export default function App() {
+
+  console.log(!Constants.isDevice)
+
+  // return ( !Constants.isDevice ? (
+  //     <Main />
+  //   ) : (
+  //     <IOSTranslateTasksProvider>
+  //       <Main />
+  //     </IOSTranslateTasksProvider>
+  //   )
+  // );
+
+  return ( 
+    <IOSTranslateTasksProvider>
+    <Main />
+  </IOSTranslateTasksProvider>
+  );
+
+}
+
 
 const styles = StyleSheet.create({
   container: {
