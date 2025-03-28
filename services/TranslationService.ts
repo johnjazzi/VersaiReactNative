@@ -100,6 +100,7 @@ export class TranslationService {
     setLoadingProgress?: (progress: number) => void) {
     try {
       console.log('Initializing translation model...');
+      setLoadingStatus?.('Initializing translation model...')
 
       if (this._isInitialized) {
         console.log('Translation model already initialized');
@@ -112,6 +113,7 @@ export class TranslationService {
       if (!modelInfo.exists) {
         this._useCloudTranslation = true;
         console.log('Translation model not found');
+        setLoadingStatus?.('Translation model not found');
         return;
       }
 
@@ -125,13 +127,16 @@ export class TranslationService {
         n_gpu_layers: 99
       });
 
+      setLoadingStatus?.('Translation model loaded');
       console.log('Translation model initialized');
 
       // Test translation
-      
+      setLoadingStatus?.('Warming Translation Model...');
       this.settings.useCloudTranslation = false;
-      await this.translate("hello world", "en", "pt");
+      const test = await this.translate("hello world", "en", "pt");
+      console.log(test)
       this._isInitialized = true;
+      this.notifyListeners();
 
 
     } catch (error) {
@@ -240,12 +245,18 @@ export class TranslationService {
     }
 
     try {
-      const prompt = `Translate this to ${targetLang}: ${text}`;
+      const prompt = `
+      <|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
+      convert the following text from ${sourceLang} to ${targetLang}:<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+      ${text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+      `
+      
       const result = await this.context.completion({
         prompt,
         n_predict: text.length + 20,
-        stop: ['\n'],  // Simplified stop token
+        stop: ['\n','<|eot_id|>' ],  // Simplified stop token
         temperature: 0.7,
         top_p: 0.95,
       })

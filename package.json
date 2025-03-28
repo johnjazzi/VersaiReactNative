@@ -28,6 +28,7 @@
     "react-native": "0.76.7",
     "react-native-dotenv": "^3.4.11",
     "react-native-web": "~0.19.13",
+    "react-native-zip-archive": "^7.0.1",
     "web-streams-polyfill": "^4.1.0",
     "whisper.rn": "latest"
   },

@@ -26,8 +26,24 @@ export function useTranscriptionService() {
   return state;
 }
 
+const modelOptions = [
+  {
+    modelName: 'ggml-base.bin',
+    modelUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin',
+  },
+  {
+    name: 'ggml-small.bin',
+    modelUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin',
+  },
+  {
+    name: 'ggml-small-encoder.mlmodelc.zip',
+    modelUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-encoder.mlmodelc.zip',
+  }
+]
+
+
 export class TranscriptionService {
-  private _modelName: string = 'ggml-small.bin';
+  private _modelName: string = 'ggml-base.bin';
   private _modelUrl: string = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${this._modelName}`;
   private _exists: boolean = false;
   private _modelPath: string = '';
@@ -46,6 +62,7 @@ export class TranscriptionService {
       setLoadingStatus?.('Initializing Whisper model...');
       this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
       const modelInfo = await FileSystem.getInfoAsync(this._modelPath);
+      console.log(this._modelPath)
       
       if (!modelInfo.exists) {
         throw new Error('Model not found');
@@ -79,8 +96,8 @@ export class TranscriptionService {
   ): Promise<void> {
     try {
       this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`
-      console.log('downloading model from', this._modelUrl);
       setLoadingStatus('Downloading model...');
+
       const downloadResumable = FileSystem.createDownloadResumable(
         this._modelUrl,
         this._modelPath,
@@ -139,7 +156,6 @@ export class TranscriptionService {
     listener(this.getState());
     return () => {this.listeners.delete(listener);}
   }
-
 
 }
 
