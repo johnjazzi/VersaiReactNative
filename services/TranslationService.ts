@@ -5,6 +5,14 @@ import { LANGUAGE_MAP, LanguageMapping , getAppleCodeFromGoogleCode } from './Co
 import { useEffect, useState, useRef } from 'react';
 import { useIOSTranslateTasks } from 'react-native-ios-translate-tasks';
 
+// Import for Device
+let Device: any = null;
+try {
+  Device = require('expo-device');
+} catch (error) {
+  console.log('expo-device not available - likely running on simulator');
+  Device = { isDevice: false, modelName: 'Simulator' };
+}
 
 export interface TranslationServiceState {
   useCloudTranslation: boolean;
@@ -12,6 +20,7 @@ export interface TranslationServiceState {
   modelName: string;
   modelSize: number;
   isInitialized: boolean;
+  isRealDevice: boolean;
 }
 
 export function useTranslationService() {
@@ -42,6 +51,7 @@ export class TranslationService {
   private _isInitialized: boolean = false;
   private _useCloudTranslation: boolean = true;
   private _iosTranslateContext: any | null = null;
+  private _isRealDevice: boolean = Device?.isDevice || false;
   private context: LlamaContext | null = null;
   private settings: TranslationSettings = {
     useCloudTranslation: true,
@@ -59,9 +69,17 @@ export class TranslationService {
   }
 
   async setCloudTranslation(value: boolean): Promise<void> {
+    // On simulator, never allow cloud translation
+    if (!this._isRealDevice && value) {
+      console.log('Cannot use cloud translation on simulator, using device model only');
+      this.settings.useCloudTranslation = false;
+      this.notifyListeners();
+      return;
+    }
+    
     this.settings.useCloudTranslation = value;
     console.log('setting cloud translation to', value)
-    if (value) { 
+    if (value && this._isRealDevice) { 
       const test = await this.IOSTranslate("hello world", "en", "pt");
       console.log(test)
     }
@@ -289,15 +307,9 @@ export class TranslationService {
 
   async IOSTranslate(text: string, sourceLang: string, targetLang: string): Promise<string> {
     if (!text) return text;
-    console.log('trying to translate with IOS Translate')
-    console.log('translating with IOS Translate')
 
     const sourceAppleCode = getAppleCodeFromGoogleCode(sourceLang);
     const targetAppleCode = getAppleCodeFromGoogleCode(targetLang);
-
-    console.log('sourceAppleCode', sourceAppleCode)
-    console.log('targetAppleCode', targetAppleCode)
-
 
     try {
       const { translatedTexts } = await this._iosTranslateContext.startIOSTranslateTasks(
@@ -318,12 +330,22 @@ export class TranslationService {
     if (!text) return text;
     
     try {
+      // On simulator, always use device translation regardless of setting
+      if (!this._isRealDevice) {
+        if (this.context) {
+          return this.deviceTranslate(text, sourceLang, targetLang);
+        } else {
+          throw new Error('No translation model available on simulator');
+        }
+      }
+      
+      // On real device, use the selected option
       if (this.settings.useCloudTranslation) {
-        return this.IOSTranslate(text, sourceLang, targetLang)
+        return this.IOSTranslate(text, sourceLang, targetLang);
       } else if (this.context) {
         return this.deviceTranslate(text, sourceLang, targetLang);
       } else {
-        throw new Error('no translation model available');
+        throw new Error('No translation model available');
       }
     } catch (error) {
       console.error('Translation error details:', error);
@@ -341,7 +363,8 @@ export class TranslationService {
       modelExists: this._exists,
       modelName: this._modelName,
       modelSize: this._modelSize,
-      isInitialized: this._isInitialized
+      isInitialized: this._isInitialized,
+      isRealDevice: this._isRealDevice
     };
   }
 
@@ -362,6 +385,12 @@ export const translationService = new TranslationService();
 
 
 export function useIOSTranslateContext() {
+  // Skip on simulator
+  if (!Device.isDevice) {
+    console.log('Skipping iOS translate tasks setup on simulator');
+    return;
+  }
+
   const iosTranslateContext = useIOSTranslateTasks();
   
   useEffect(() => {

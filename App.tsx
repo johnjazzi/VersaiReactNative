@@ -7,7 +7,15 @@ import { LogBox } from 'react-native';
 import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
 import { useEffect, useState, useRef } from 'react';
 import React from 'react';
-import Constants from 'expo-constants';
+
+// Conditionally import expo-device
+let Device: any = null;
+try {
+  Device = require('expo-device');
+} catch (error) {
+  console.log('expo-device not available - likely running on simulator');
+  Device = { isDevice: false, modelName: 'Simulator' };
+}
 
 import { IOSTranslateTasksProvider } from "react-native-ios-translate-tasks";
 
@@ -22,7 +30,7 @@ export function Main() {
   const [translatedTranscript, setTranslatedTranscript] = useState('');
   const [loadingStatus, setLoadingStatus] = useState<string>('');
   const [loadingProgress, setLoadingProgress] = useState<number>(0);
-  const [transcriptionLog, setTranscriptionLog] = useState<{text: string, translatedText: string, timestamp: Date}[]>([]);
+  const [transcriptionLog, setTranscriptionLog] = useState<{text: string, translatedText: string, timestamp: Date, languageInfo?: string}[]>([]);
   const [currentSpeaker, setCurrentSpeaker] = useState('Speaker 1');
   const autoSaveInterval = useRef<NodeJS.Timeout>();
   const stopRecordingRef = useRef<(() => void) | null>(null);
@@ -44,7 +52,8 @@ export function Main() {
     modelExists: translationModelExists,
     modelName: translationModelName,
     modelSize: translationModelSize,
-    isInitialized: translationInitialized 
+    isInitialized: translationInitialized,
+    isRealDevice 
   } = useTranslationService();
 
   const { 
@@ -55,6 +64,15 @@ export function Main() {
     whisperContext: transcriptionContext
   } = useTranscriptionService();
 
+  // Helper function to get the target language based on recording language
+  const getTargetLanguage = (sourceLanguage: string): string => {
+    return sourceLanguage === languageOne ? languageTwo : languageOne;
+  };
+
+  // Helper function to get language display name from code
+  const getLanguageDisplayName = (languageCode: string): string => {
+    return Object.entries(LANGUAGE_MAP).find(([_, mapping]) => mapping.googleCode === languageCode)?.[0] || languageCode;
+  };
 
   useEffect(() => {
     
@@ -66,16 +84,15 @@ export function Main() {
         label: value.displayName
       }));
       setLangOptions(lang_options)
-
-
+      
       // INIT Models
       try {
         console.log('Initializing models...');
 
         !transcriptionInitialized? await transcriptionService.initialize(setLoadingStatus, setLoadingProgress): null;
         !translationInitialized? await translationService.initialize(setLoadingStatus, setLoadingProgress): null;
-
         setIsModelInitialized(true);
+        
       } catch (error: any) {
         setLoadingStatus('Error initializing models: ' + error.message);
       }
@@ -83,31 +100,34 @@ export function Main() {
     })();
   }, [isModelInitialized]);
 
-  const saveToTranscriptionLog = async (text: string) => {
-
-    //TODO: add the language of the recording and translation to the transcription log like English -> Portugese
+  const saveToTranscriptionLog = async (currentTranscript: {text: string, recordingLanguage: string}) => {
+    //Get full language names from language codes
+    const sourceLanguageName = getLanguageDisplayName(currentTranscript.recordingLanguage);
+    const targetLanguageCode = getTargetLanguage(currentTranscript.recordingLanguage);
+    const targetLanguageName = getLanguageDisplayName(targetLanguageCode);
+    
     const translatedText = await translationService.translate(
-      text, 
-      recordingLanguage, 
-      (recordingLanguage === languageOne) ? languageTwo : languageOne
+      currentTranscript.text, 
+      currentTranscript.recordingLanguage, 
+      targetLanguageCode
     );
     
-    if (text) {
+    if (currentTranscript.text) {
       setTranscriptionLog(prev => [{
-        text: text, 
+        text: currentTranscript.text, 
         translatedText: translatedText,
-        timestamp: new Date()
+        timestamp: new Date(),
+        languageInfo: `${sourceLanguageName} → ${targetLanguageName}`
       }, ...prev]);
     }
   }
 
   const startRecording = async (language: string) => {
 
-    //TDOD: Show a dot that is recording and a waveform so that user can see their voice is being picked up
+    //TODO Show a dot that is recording and a waveform so that user can see their voice is being picked up
 
     try {
       if (!transcriptionContext) return;
-      
       setRecordingLanguage(language);
 
       if (Platform.OS === 'ios') {
@@ -119,18 +139,20 @@ export function Main() {
         await AudioSessionIos.setActive(true);
       }
 
-      const { stop, subscribe } = await transcriptionContext.transcribeRealtime();
+      const { stop, subscribe } = await transcriptionContext.transcribeRealtime({
+        language: language
+      });
 
       setStopRecording(() => stop);
       stopRecordingRef.current = stop;
 
-      let currentTranscript = '';
+      let currentTranscript = {text: '', recordingLanguage: recordingLanguage};
 
       subscribe(evt => {
         const { isCapturing, data } = evt;
         if (data?.result) {
-          currentTranscript = data.result;
-          setTranscript(currentTranscript);
+          currentTranscript = {text: data.result, recordingLanguage: language};
+          setTranscript(currentTranscript.text);
         }
 
         if (!isCapturing) {
@@ -148,18 +170,17 @@ export function Main() {
 
   const switchSpeaker = async () => {
     if (stopRecordingRef.current) {
+      const newLanguage = recordingLanguage === languageOne ? languageTwo : languageOne;
+      setRecordingLanguage(newLanguage);
       stopRecordingRef.current();
       await new Promise(resolve => setTimeout(resolve, 50));
-      if (recordingLanguage === languageOne) 
-        { startRecording(languageTwo); }
-      else 
-        { startRecording(languageOne); }
+      startRecording(newLanguage);
     }
   };
 
   useEffect(() => { async function translateTranscript() {
       if (transcript) {
-        const targetLanguage = recordingLanguage === languageOne ? languageTwo : languageOne;
+        const targetLanguage = getTargetLanguage(recordingLanguage);
         const translatedText = await translationService.translate(transcript, recordingLanguage, targetLanguage);
         setTranslatedTranscript(translatedText);
       }
@@ -268,8 +289,12 @@ export function Main() {
           </View>
 
           <View style={styles.transcriptContainer}>
-            {/* TODO: show names of languges correctly not just shorthand */}
-            {stopRecording && <Text style={styles.recordingLabel}>Recording in {recordingLanguage}...</Text>} 
+            {stopRecording && (
+              <Text style={styles.recordingContainer}>
+                <Text style={styles.recordingLabel}>Recording</Text>
+                <Text> {getLanguageDisplayName(recordingLanguage)} → {getLanguageDisplayName(getTargetLanguage(recordingLanguage))}</Text>
+              </Text>
+            )}
             <Text>{translatedTranscript}</Text>
             <Text style={{color: '#888', fontSize: 14}}>{transcript}</Text>
           </View>
@@ -278,7 +303,10 @@ export function Main() {
         <ScrollView style={styles.logContainer}>
           {transcriptionLog.map((item, index) => (
             <View key={index} style={styles.logItem}>
-              <Text style={styles.logTimestamp}>{item.timestamp.toLocaleTimeString()}</Text>
+              <View style={styles.logHeader}>
+                <Text style={styles.languageInfo}>{item.languageInfo}</Text>
+                <Text style={styles.logTimestamp}>{item.timestamp.toLocaleTimeString()}</Text>
+              </View>
               <Text>{item.translatedText}</Text>
               {item.text && (
                 <Text style={{color: '#888', fontSize: 14}}>{item.text}</Text>
@@ -291,13 +319,18 @@ export function Main() {
       <View style={styles.settingsContainer}>
         <View style={styles.settingRow}>
           <Text style={styles.settingLabel}>Native Translation</Text>
-          <Switch
-            value={useCloudTranslation}
-            onValueChange={(value) => {
-              translationService.setCloudTranslation(value);
-            }}
-            disabled={!translationInitialized}
-          />
+          <View>
+            {!isRealDevice && (
+              <Text style={styles.disabledText}>Not available on simulator</Text>
+            )}
+            <Switch
+              value={useCloudTranslation}
+              onValueChange={(value) => {
+                translationService.setCloudTranslation(value);
+              }}
+              disabled={!translationInitialized || !isRealDevice}
+            />
+          </View>
         </View>
 
         <View style={styles.settingRow}>
@@ -420,24 +453,14 @@ export function Main() {
 }
 
 export default function App() {
-
-  console.log(!Constants.isDevice)
-
-  // return ( !Constants.isDevice ? (
-  //     <Main />
-  //   ) : (
-  //     <IOSTranslateTasksProvider>
-  //       <Main />
-  //     </IOSTranslateTasksProvider>
-  //   )
-  // );
-
-  return ( 
+  // We'll render Main regardless, but IOSTranslateTasksProvider only on real device
+  return (Device.isDevice ? 
     <IOSTranslateTasksProvider>
+      <Main />
+    </IOSTranslateTasksProvider>
+    :
     <Main />
-  </IOSTranslateTasksProvider>
   );
-
 }
 
 
@@ -472,9 +495,12 @@ const styles = StyleSheet.create({
     width: '90%',
     alignSelf: 'center',
   },
-  recordingLabel: {
-    color: 'red',
+  recordingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 10,
+  },
+  recordingLabel: {
     fontWeight: 'bold',
   },
   modalOverlay: {
@@ -494,10 +520,19 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
     paddingVertical: 8,
   },
+  logHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   logTimestamp: {
     fontSize: 12,
     color: '#666',
-    marginBottom: 4,
+  },
+  languageInfo: {
+    fontSize: 12,
+    color: '#007AFF',
   },
   pickerContainer: {
     flex: 1,
@@ -640,6 +675,15 @@ const styles = StyleSheet.create({
   modelText: {
     fontSize: 14,
     color: '#666',
+  },
+  recordingLang: {
+    color: '#666',
+    marginBottom: 10,
+    fontSize: 14,
+  },
+  disabledText: {
+    color: '#888',
+    marginRight: 10,
   },
 });
 
