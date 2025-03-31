@@ -279,10 +279,6 @@ PODS:
     - Yoga
   - llama-rn (0.5.4):
     - React-Core
-  - onnxruntime-c (1.20.0)
-  - onnxruntime-react-native (1.20.1):
-    - onnxruntime-c
-    - React-Core
   - RCT-Folly (2024.01.01.00):
     - boost
     - DoubleConversion
@@ -1789,7 +1785,15 @@ PODS:
     - React-Core
   - RNDeviceInfo (14.0.4):
     - React-Core
+  - RNZipArchive (7.0.1):
+    - React-Core
+    - RNZipArchive/Core (= 7.0.1)
+    - SSZipArchive (~> 2.5.5)
+  - RNZipArchive/Core (7.0.1):
+    - React-Core
+    - SSZipArchive (~> 2.5.5)
   - SocketRocket (0.7.1)
+  - SSZipArchive (2.5.5)
   - whisper-rn (0.3.9):
     - React-Core
   - Yoga (0.0.0)
@@ -1818,7 +1822,6 @@ DEPENDENCIES:
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
   - IOSTranslateTasks (from `../node_modules/react-native-ios-translate-tasks`)
   - llama-rn (from `../node_modules/llama.rn`)
-  - onnxruntime-react-native (from `../node_modules/onnxruntime-react-native`)
   - RCT-Folly (from `../node_modules/react-native/third-party-podspecs/RCT-Folly.podspec`)
   - RCT-Folly/Fabric (from `../node_modules/react-native/third-party-podspecs/RCT-Folly.podspec`)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
@@ -1879,13 +1882,14 @@ DEPENDENCIES:
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
   - "RNCPicker (from `../node_modules/@react-native-picker/picker`)"
   - RNDeviceInfo (from `../node_modules/react-native-device-info`)
+  - RNZipArchive (from `../node_modules/react-native-zip-archive`)
   - whisper-rn (from `../node_modules/whisper.rn`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
   trunk:
-    - onnxruntime-c
     - SocketRocket
+    - SSZipArchive
 
 EXTERNAL SOURCES:
   boost:
@@ -1935,8 +1939,6 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-ios-translate-tasks"
   llama-rn:
     :path: "../node_modules/llama.rn"
-  onnxruntime-react-native:
-    :path: "../node_modules/onnxruntime-react-native"
   RCT-Folly:
     :podspec: "../node_modules/react-native/third-party-podspecs/RCT-Folly.podspec"
   RCTDeprecation:
@@ -2053,6 +2055,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-picker/picker"
   RNDeviceInfo:
     :path: "../node_modules/react-native-device-info"
+  RNZipArchive:
+    :path: "../node_modules/react-native-zip-archive"
   whisper-rn:
     :path: "../node_modules/whisper.rn"
   Yoga:
@@ -2082,8 +2086,6 @@ SPEC CHECKSUMS:
   hermes-engine: eb4a80f6bf578536c58a44198ec93a30f6e69218
   IOSTranslateTasks: 13ff1e411343737bf74c0d19d617e994563e3df9
   llama-rn: 725578134bd2a13a570ac74935dce7d81861bb60
-  onnxruntime-c: 07cfff40dda7e1c54a4350bb2ad226c63150fce3
-  onnxruntime-react-native: ba9b0c71ffecf944d2505ad4d8b468c22946306d
   RCT-Folly: bf5c0376ffe4dd2cf438dcf86db385df9fdce648
   RCTDeprecation: 7691283dd69fed46f6653d376de6fa83aaad774c
   RCTRequired: eac044a04629288f272ee6706e31f81f3a2b4bfe
@@ -2142,7 +2144,9 @@ SPEC CHECKSUMS:
   ReactCommon: 04292c6f596181ebf755e7929d96d2148542b0e8
   RNCPicker: f963e01f78e546a93b98aa201501713dbda14e94
   RNDeviceInfo: feea80a690d2bde1fe51461cf548039258bd03f2
+  RNZipArchive: 7bb4c70d6aa2dd235212c0a4a3de0a4e237e2569
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+  SSZipArchive: c69881e8ac5521f0e622291387add5f60f30f3c4
   whisper-rn: 0fe4431970b70ee91108add706cd47d2b38e588e
   Yoga: 90d80701b27946c4b23461c00a7207f300a6ff71
 

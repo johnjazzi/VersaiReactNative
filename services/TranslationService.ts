@@ -15,7 +15,7 @@ try {
 }
 
 export interface TranslationServiceState {
-  useCloudTranslation: boolean;
+  translationMode: 'cloud' | 'ios' | 'llm';
   modelExists: boolean;
   modelName: string;
   modelSize: number;
@@ -49,9 +49,9 @@ export class TranslationService {
   private _modelSize: number = 0 ;
   private _exists: boolean = false;
   private _isInitialized: boolean = false;
-  private _useCloudTranslation: boolean = true;
   private _iosTranslateContext: any | null = null;
   private _isRealDevice: boolean = Device?.isDevice || false;
+  private _translationMode: 'cloud' | 'ios' | 'llm' = Device?.isDevice ? 'ios' : 'cloud';
   private context: LlamaContext | null = null;
   private settings: TranslationSettings = {
     useCloudTranslation: true,
@@ -59,9 +59,30 @@ export class TranslationService {
   };
   private listeners: Set<(state: TranslationServiceState) => void> = new Set();
 
-
   get googleApiKey(): string {
     return this.settings.googleApiKey || '';
+  }
+
+  get translationMode(): 'cloud' | 'ios' | 'llm' {
+    return this._translationMode;
+  }
+
+  async setTranslationMode(mode: 'cloud' | 'ios' | 'llm') {
+    switch (mode) {
+      case 'llm':
+        if (this._exists === true && this._isInitialized === false) {
+          await this.initializeLLM();
+        }
+        break;
+      case 'ios':
+        if (this._isRealDevice === false) {
+          return;
+        }
+        break;
+    }
+
+    this._translationMode = mode;
+    this.notifyListeners();
   }
 
   setIOSTranslateContext(context: any): void {
@@ -125,13 +146,41 @@ export class TranslationService {
     }
   }
 
+  async initializeLLM(
+    setLoadingStatus?: (status: string) => void , 
+    setLoadingProgress?: (progress: number) => void) {
+    try {
+      setLoadingStatus?.('Initializing translation model...')
+      setLoadingProgress?.(40);
+      this.context = await initLlama({
+        model: this._modelPath,
+        use_mlock: true,
+        n_ctx: 2048,
+        n_gpu_layers: 99
+      });
+
+      setLoadingStatus?.('Translation model loaded, Warming...');
+      setLoadingProgress?.(80);
+      this.settings.useCloudTranslation = false;
+      const test = await this.translate("hello world", "en", "pt");
+      console.log(test)
+      this._isInitialized = true;
+      this.notifyListeners();
+      setLoadingStatus?.('Done!');
+      setLoadingProgress?.(100);
+      
+    } catch (error) {
+      console.error('Translation initialization error:', error);
+      throw error;
+    }
+  }
+  
   async initialize(
     setLoadingStatus?: (status: string) => void , 
     setLoadingProgress?: (progress: number) => void) {
     try {
 
       console.log('Initializing translation model...');
-      setLoadingStatus?.('Initializing translation model...')
       setLoadingProgress?.(10);
 
       if (this._isInitialized) {
@@ -143,7 +192,6 @@ export class TranslationService {
       const modelInfo = await FileSystem.getInfoAsync(this._modelPath);
       
       if (!modelInfo.exists) {
-        this._useCloudTranslation = true;
         console.log('Translation model not found');
         setLoadingStatus?.('Translation model not found');
         return;
@@ -153,26 +201,13 @@ export class TranslationService {
       this._exists = true;
       this.notifyListeners();
       
-      setLoadingProgress?.(40);
-      this.context = await initLlama({
-        model: this._modelPath,
-        use_mlock: true,
-        n_ctx: 2048,
-        n_gpu_layers: 99
-      });
+      if (this.translationMode === 'cloud' || this.translationMode === 'ios') {
+        setLoadingProgress?.(100);
+        return;
+      }
 
-      setLoadingStatus?.('Translation model loaded');
-      setLoadingProgress?.(80);
-      console.log('Translation model initialized');
+      await this.initializeLLM(setLoadingStatus, setLoadingProgress);
       
-      // Test translation
-      setLoadingStatus?.('Warming Translation Model...');
-      this.settings.useCloudTranslation = false;
-      const test = await this.translate("hello world", "en", "pt");
-      console.log(test)
-      this._isInitialized = true;
-      this.notifyListeners();
-      setLoadingStatus?.('Done!');
       setLoadingProgress?.(100);
       return;
 
@@ -238,10 +273,8 @@ export class TranslationService {
       throw new Error('Google API key not configured');
       
     }
-
     try {
       // Find the language mapping by code
-
 
       const response = await fetch(
         `https://translation.googleapis.com/language/translate/v2?key=${this.settings.googleApiKey}`,
@@ -359,7 +392,7 @@ export class TranslationService {
 
   getState(): TranslationServiceState {
     return {
-      useCloudTranslation: this.settings.useCloudTranslation,
+      translationMode: this._translationMode,
       modelExists: this._exists,
       modelName: this._modelName,
       modelSize: this._modelSize,
@@ -387,7 +420,6 @@ export const translationService = new TranslationService();
 export function useIOSTranslateContext() {
   // Skip on simulator
   if (!Device.isDevice) {
-    console.log('Skipping iOS translate tasks setup on simulator');
     return;
   }
 

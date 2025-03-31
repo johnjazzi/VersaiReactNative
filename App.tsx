@@ -45,15 +45,17 @@ export function Main() {
 
   const [activeTab, setActiveTab] = useState<'translation' | 'settings'>('translation');
 
+
   useIOSTranslateContext();
 
   const { 
-    useCloudTranslation,
+    translationMode,
     modelExists: translationModelExists,
     modelName: translationModelName,
     modelSize: translationModelSize,
     isInitialized: translationInitialized,
     isRealDevice 
+
   } = useTranslationService();
 
   const { 
@@ -92,6 +94,7 @@ export function Main() {
         !transcriptionInitialized? await transcriptionService.initialize(setLoadingStatus, setLoadingProgress): null;
         !translationInitialized? await translationService.initialize(setLoadingStatus, setLoadingProgress): null;
         setIsModelInitialized(true);
+      
         
       } catch (error: any) {
         setLoadingStatus('Error initializing models: ' + error.message);
@@ -207,6 +210,7 @@ export function Main() {
     }
   };
 
+
   return (
     <View style={styles.container}>
     <View style={styles.tabBar}>
@@ -289,6 +293,8 @@ export function Main() {
           </View>
 
           <View style={styles.transcriptContainer}>
+            {/* TODO make the transcript show up typewriter style */}
+            {/* TODO show the waveform being recorded */}
             {stopRecording && (
               <Text style={styles.recordingContainer}>
                 <Text style={styles.recordingLabel}>Recording</Text>
@@ -318,18 +324,57 @@ export function Main() {
     ) : (
       <View style={styles.settingsContainer}>
         <View style={styles.settingRow}>
-          <Text style={styles.settingLabel}>Native Translation</Text>
-          <View>
-            {!isRealDevice && (
-              <Text style={styles.disabledText}>Not available on simulator</Text>
-            )}
-            <Switch
-              value={useCloudTranslation}
-              onValueChange={(value) => {
-                translationService.setCloudTranslation(value);
-              }}
-              disabled={!translationInitialized || !isRealDevice}
-            />
+          <Text style={styles.settingLabel}>Translation Provider</Text>
+          <View style={styles.radioContainer}>
+            <TouchableOpacity 
+              style={styles.radioOption}
+              onPress={() => translationService.setTranslationMode('cloud')}
+              disabled={false} // Cloud always available
+            >
+              <View style={[
+                styles.radioButton, 
+                translationMode === 'cloud' && styles.radioButtonSelected
+              ]} />
+              <Text style={translationMode === 'cloud' ? styles.radioTextSelected : styles.radioText}>
+                Cloud
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.radioOption}
+              onPress={() => translationService.setTranslationMode('ios')}
+              disabled={!(isRealDevice && Platform.OS === 'ios')}
+            >
+              <View style={[
+                styles.radioButton, 
+                translationMode === 'ios' && styles.radioButtonSelected,
+                !(isRealDevice && Platform.OS === 'ios') && styles.radioButtonDisabled
+              ]} />
+              <Text style={[
+                translationMode === 'ios' ? styles.radioTextSelected : styles.radioText,
+                !(isRealDevice && Platform.OS === 'ios') && styles.radioTextDisabled
+              ]}>
+                iOS
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.radioOption}
+              onPress={() => translationService.setTranslationMode('llm')}
+              disabled={!translationModelExists}
+            >
+              <View style={[
+                styles.radioButton, 
+                translationMode === 'llm' && styles.radioButtonSelected,
+                !translationModelExists && styles.radioButtonDisabled
+              ]} />
+              <Text style={[
+                translationMode === 'llm' ? styles.radioTextSelected : styles.radioText,
+                !translationModelExists && styles.radioTextDisabled
+              ]}>
+                LLM
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -684,6 +729,44 @@ const styles = StyleSheet.create({
   disabledText: {
     color: '#888',
     marginRight: 10,
+  },
+  radioContainer: {
+    flexDirection: 'column',
+    gap: 10,
+  },
+  radioOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  radioButton: {
+    height: 20,
+    width: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#007AFF',
+    marginRight: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  radioButtonSelected: {
+    borderColor: '#007AFF',
+    backgroundColor: '#007AFF',
+  },
+  radioButtonDisabled: {
+    borderColor: '#CCCCCC',
+  },
+  radioText: {
+    fontSize: 16,
+    color: '#000000',
+  },
+  radioTextSelected: {
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  radioTextDisabled: {
+    color: '#CCCCCC',
   },
 });
 

@@ -5,6 +5,16 @@ import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
 import { TranslationServiceState } from './TranslationService';
 import { useEffect, useState, useRef } from 'react';
 
+// Safe import approach that doesn't cause NativeEventEmitter issues
+let ZipArchive: any = null;
+if (Platform.OS === 'ios') {
+  try {
+    ZipArchive = require('react-native-zip-archive');
+  } catch (e) {
+    console.warn('react-native-zip-archive module not available');
+  }
+}
+
 export interface TranscriptionServiceState {
   modelExists: boolean;
   modelName: string;
@@ -26,11 +36,7 @@ export function useTranscriptionService() {
   return state;
 }
 
-const modelOptions = [
-  {
-    modelName: 'ggml-base.bin',
-    modelUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin',
-  },
+const modelFiles = [
   {
     name: 'ggml-small.bin',
     modelUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin',
@@ -43,7 +49,7 @@ const modelOptions = [
 
 
 export class TranscriptionService {
-  private _modelName: string = 'ggml-base.bin';
+  private _modelName: string = 'ggml-small.bin';
   private _modelUrl: string = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${this._modelName}`;
   private _exists: boolean = false;
   private _modelPath: string = '';
@@ -52,7 +58,6 @@ export class TranscriptionService {
   private context: WhisperContext | null = null;
 
   private listeners: Set<(state: TranscriptionServiceState) => void> = new Set();
-
 
   async initialize(
       setLoadingStatus?: (status: string) => void, 
@@ -70,14 +75,21 @@ export class TranscriptionService {
 
       this._modelSize = modelInfo.size;
       this._exists = true;
+      setLoadingProgress?.(10);
 
       this.context = await initWhisper({
-        filePath:this._modelPath
+        filePath: this._modelPath,
+        coreMLModelAsset: Platform.OS === 'ios' ? {
+          filename: this._modelName.replace('.bin', '-encoder.mlmodelc'),
+          assets: [
+            `${FileSystem.documentDirectory}${this._modelName.replace('.bin', '-encoder.mlmodelc/weights/weight.bin')}`,
+            `${FileSystem.documentDirectory}${this._modelName.replace('.bin', '-encoder.mlmodelc/model.mil')}`,
+            `${FileSystem.documentDirectory}${this._modelName.replace('.bin', '-encoder.mlmodelc/coremldata.bin')}`,
+          ],
+        } : undefined,
       });
 
       console.log('Whisper context initialized');
-
-      setLoadingProgress?.(10);
 
       setLoadingProgress?.(100);
       setLoadingStatus?.('Ready!');
@@ -95,27 +107,56 @@ export class TranscriptionService {
     setLoadingStatus: (status: string) => void
   ): Promise<void> {
     try {
-      this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`
-      setLoadingStatus('Downloading model...');
+      // Download each model file sequentially
+      for (const modelFile of modelFiles) {
+        const filePath = `${FileSystem.documentDirectory}${modelFile.name}`;
+        setLoadingStatus(`Downloading ${modelFile.name}...`);
 
-      const downloadResumable = FileSystem.createDownloadResumable(
-        this._modelUrl,
-        this._modelPath,
-        {},
-        (downloadProgress) => {
-          const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
-          onProgress(Math.round(progress * 100));
-          setLoadingStatus(`Downloading model... ${Math.round(progress * 100)}%`);
+        const downloadResumable = FileSystem.createDownloadResumable(
+          modelFile.modelUrl,
+          filePath,
+          {},
+          (downloadProgress) => {
+            const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+            onProgress(Math.round(progress * 100));
+            setLoadingStatus(`Downloading ${modelFile.name}... ${Math.round(progress * 100)}%`);
+          }
+        );
+        
+        const result = await downloadResumable.downloadAsync();
+        if (!result?.uri) throw new Error(`Download failed for ${modelFile.name}`);
+        
+        // Handle zip files - for iOS we need to handle the Core ML models
+        if (modelFile.name.endsWith('.zip') && Platform.OS === 'ios') {
+          setLoadingStatus('Extracting model files...');
+          const extractDir = FileSystem.documentDirectory || '';
+          
+          try {
+            // Check if ZipArchive is available
+            if (ZipArchive && ZipArchive.unzip) {
+              // Unzip the file
+              await ZipArchive.unzip(filePath, extractDir);
+              
+              // Remove the zip file after extraction
+              await FileSystem.deleteAsync(filePath);
+              
+              setLoadingStatus('Model files extracted successfully');
+            } else {
+              setLoadingStatus('Zip extraction not available on this device. You may need to manually extract the files.');
+            }
+          } catch (error) {
+            console.error('Extraction error:', error);
+            setLoadingStatus('Error extracting zip file. iOS Core ML model may not be available.');
+          }
         }
-      );
+      }
       
-      const result = await downloadResumable.downloadAsync();
-      if (!result?.uri) throw new Error('Download failed');
-      
-      setLoadingStatus('Model downloaded successfully!');
+      // Set the model path to the main model file
+      this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
+      setLoadingStatus('Models downloaded successfully!');
       
       // Initialize after download
-      await this.initialize(setLoadingStatus);
+      await this.initialize(setLoadingStatus, onProgress);
     } catch (error: any) {
       console.error('Download error:', error);
       setLoadingStatus('Error downloading model: ' + error.message);
@@ -125,13 +166,34 @@ export class TranscriptionService {
 
   async deleteModel(setLoadingStatus: (status: string) => void): Promise<void> {
     try {
-      setLoadingStatus('Deleting model...');
-      await FileSystem.deleteAsync(this._modelPath);
+      setLoadingStatus('Deleting models...');
+      
+      // Delete main model file
+      const mainModelPath = `${FileSystem.documentDirectory}${this._modelName}`;
+      const mainModelInfo = await FileSystem.getInfoAsync(mainModelPath);
+      if (mainModelInfo.exists) {
+        await FileSystem.deleteAsync(mainModelPath);
+      }
+      
+      // Delete Core ML model directory if on iOS
+      if (Platform.OS === 'ios') {
+        const coreMLDirPath = `${FileSystem.documentDirectory}${this._modelName.replace('.bin', '-encoder.mlmodelc')}`;
+        const coreMLDirInfo = await FileSystem.getInfoAsync(coreMLDirPath);
+        if (coreMLDirInfo.exists && coreMLDirInfo.isDirectory) {
+          await FileSystem.deleteAsync(coreMLDirPath, { idempotent: true });
+        }
+      }
+      
       this.context = null;
-      setLoadingStatus('Model deleted successfully!');
+      this._exists = false;
+      this._isInitialized = false;
+      this._modelSize = 0;
+      this.notifyListeners();
+      
+      setLoadingStatus('Models deleted successfully!');
     } catch (error: any) {
       console.error('Delete error:', error);
-      setLoadingStatus('Error deleting model: ' + error.message);
+      setLoadingStatus('Error deleting models: ' + error.message);
       throw error;
     }
   }
