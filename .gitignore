@@ -2,6 +2,8 @@
 
 # dependencies
 node_modules/
+yarn.lock
+package-lock.json
 
 # Expo
 .expo/
@@ -41,10 +43,8 @@ assets/models/*
 *.bin
 *.mlmodelc
 
-# ios
-ios/*
-ios/Pods/
-ios/build/
+# iOS
+ios/**/*
 
 # android
 android
