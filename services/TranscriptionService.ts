@@ -38,18 +38,17 @@ export function useTranscriptionService() {
 
 const modelFiles = [
   {
-    name: 'ggml-small.bin',
-    modelUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin',
+    name: 'ggml-tiny.bin',
+    modelUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin',
   },
   {
-    name: 'ggml-small-encoder.mlmodelc.zip',
-    modelUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-encoder.mlmodelc.zip',
+    name: 'ggml-tiny-encoder.mlmodelc.zip',
+    modelUrl: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-encoder.mlmodelc.zip',
   }
 ]
 
-
 export class TranscriptionService {
-  private _modelName: string = 'ggml-small.bin';
+  private _modelName: string = 'ggml-tiny.bin';
   private _modelUrl: string = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${this._modelName}`;
   private _exists: boolean = false;
   private _modelPath: string = '';
@@ -59,17 +58,36 @@ export class TranscriptionService {
 
   private listeners: Set<(state: TranscriptionServiceState) => void> = new Set();
 
+
+  async checkIfbundledModelExists() {
+    try {
+      const bundledModelPath = `${FileSystem.bundleDirectory}assets/models/${this._modelName}`;
+      console.log(bundledModelPath)
+      const modelInfo = await FileSystem.getInfoAsync(bundledModelPath);
+      console.log(modelInfo)
+      return modelInfo.exists;
+    } catch (error) {
+      console.error('Error checking bundled model:', error);
+      return false;
+    }
+  }
+
+
   async initialize(
       setLoadingStatus?: (status: string) => void, 
       setLoadingProgress?: (progress: number) => void) {
     try {
 
       setLoadingStatus?.('Initializing Whisper model...');
+
+      await this.checkIfbundledModelExists()
+
       this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
       const modelInfo = await FileSystem.getInfoAsync(this._modelPath);
-      console.log(this._modelPath)
       
       if (!modelInfo.exists) {
+        setLoadingProgress?.(100);
+        setLoadingStatus?.('Model not found');
         throw new Error('Model not found');
       }
 

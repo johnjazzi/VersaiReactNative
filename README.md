@@ -17,17 +17,13 @@ pip install coremltools
 # convert models
 sh ./models/download-ggml-model.sh base
 ./models/generate-coreml-model.sh base
-
-
 ```
-x
 
+
+### Install modules
 
 ```
 yarn install
-cd ios
-pod install
-cd ..
 ```
 
 
@@ -47,7 +43,6 @@ might need to run in tunnel mode
 ```
 npx expo start --tunnel
 ```
-
 
 
 ### DEBUG

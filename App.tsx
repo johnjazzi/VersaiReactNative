@@ -109,15 +109,28 @@ export function Main() {
     const targetLanguageCode = getTargetLanguage(currentTranscript.recordingLanguage);
     const targetLanguageName = getLanguageDisplayName(targetLanguageCode);
     
-    const translatedText = await translationService.translate(
-      currentTranscript.text, 
-      currentTranscript.recordingLanguage, 
-      targetLanguageCode
-    );
+    // Skip if transcript is empty
+    if (!currentTranscript.text.trim()) return;
     
-    if (currentTranscript.text) {
+    // Split transcript into sentences
+    const sentences = currentTranscript.text.match(/[^.!?]+[.!?]+/g) || [currentTranscript.text];
+    
+    // Group sentences into chunks of max 4
+    const chunks = [];
+    for (let i = 0; i < sentences.length; i += 4) {
+      chunks.push(sentences.slice(i, i + 4).join(' '));
+    }
+    
+    // Process each chunk
+    for (const chunk of chunks) {
+      const translatedText = await translationService.translate(
+        chunk, 
+        currentTranscript.recordingLanguage, 
+        targetLanguageCode
+      );
+      
       setTranscriptionLog(prev => [{
-        text: currentTranscript.text, 
+        text: chunk, 
         translatedText: translatedText,
         timestamp: new Date(),
         languageInfo: `${sourceLanguageName} → ${targetLanguageName}`
@@ -130,7 +143,7 @@ export function Main() {
     //TODO Show a dot that is recording and a waveform so that user can see their voice is being picked up
 
     try {
-      if (!transcriptionContext) return;
+      if (!transcriptionContext || !transcriptionInitialized) return;
       setRecordingLanguage(language);
 
       if (Platform.OS === 'ios') {
@@ -143,7 +156,10 @@ export function Main() {
       }
 
       const { stop, subscribe } = await transcriptionContext.transcribeRealtime({
-        language: language
+        language: language,
+        realtimeAudioSliceSec: 20,
+        realtimeAudioSec: 120,
+
       });
 
       setStopRecording(() => stop);
@@ -152,10 +168,11 @@ export function Main() {
       let currentTranscript = {text: '', recordingLanguage: recordingLanguage};
 
       subscribe(evt => {
-        const { isCapturing, data } = evt;
+        const { isCapturing, data, processTime } = evt;
         if (data?.result) {
           currentTranscript = {text: data.result, recordingLanguage: language};
           setTranscript(currentTranscript.text);
+          console.log(`Process time: ${processTime}ms`)
         }
 
         if (!isCapturing) {
@@ -248,7 +265,7 @@ export function Main() {
             <MaterialIcons 
               name="mic" 
               size={28} 
-              color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
+              color={!transcriptionInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
               onPress={() => startRecording(languageOne)}
               style={styles.iconButton}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -272,7 +289,7 @@ export function Main() {
             <MaterialIcons 
               name="mic" 
               size={28} 
-              color={!isModelInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
+              color={!transcriptionInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
               onPress={() => startRecording(languageTwo)}
               style={styles.iconButton}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -426,7 +443,7 @@ export function Main() {
               <Button 
                 title="Download Model" 
                 onPress={() => transcriptionService.downloadModel(setLoadingProgress, setLoadingStatus)}
-                disabled={loadingProgress < 100 && loadingProgress > 0}
+                disabled={transcriptionModelExists}
               />
             </View>
           )}

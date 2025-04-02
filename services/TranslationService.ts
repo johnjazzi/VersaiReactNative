@@ -194,6 +194,7 @@ export class TranslationService {
       if (!modelInfo.exists) {
         console.log('Translation model not found');
         setLoadingStatus?.('Translation model not found');
+        setLoadingProgress?.(100);
         return;
       }
 
