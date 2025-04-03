@@ -57,6 +57,7 @@
           "ios": {
             "newArchEnabled": false,
             "deploymentTarget": "16.0",
+            "extraFlags": ["-DWHISPER_NO_AMX=1"] 
           },
           "android": {
             "newArchEnabled": false

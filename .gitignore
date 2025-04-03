@@ -44,7 +44,7 @@ assets/models/*
 *.mlmodelc
 
 # iOS
-ios/**/*
+ios
 
 # android
 android

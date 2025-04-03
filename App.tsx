@@ -4,6 +4,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { LANGUAGE_MAP, LanguageMapping } from './services/Common';
 import { Asset } from 'expo-asset';
 
+
 import { LogBox } from 'react-native';
 import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
 import { useEffect, useState, useRef } from 'react';
@@ -147,7 +148,7 @@ export function Main() {
     try {
       if (!transcriptionContext || !transcriptionInitialized) return;
       setRecordingLanguage(language);
-
+      
       const { stop, subscribe } = await transcriptionContext.transcribeRealtime({
         language: language,
         audioSessionOnStartIos: {
@@ -176,7 +177,7 @@ export function Main() {
         }
 
         if (!isCapturing) {
-          saveToTranscriptionLog(currentTranscript);
+            saveToTranscriptionLog(currentTranscript);
           setTranscript('');
           setTranslatedTranscript('');
           setStopRecording(null);
