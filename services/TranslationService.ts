@@ -152,6 +152,9 @@ export class TranslationService {
     try {
       setLoadingStatus?.('Initializing translation model...')
       setLoadingProgress?.(40);
+
+      await this.updateModelInfo();
+
       this.context = await initLlama({
         model: this._modelPath,
         use_mlock: true,
@@ -190,6 +193,7 @@ export class TranslationService {
 
       this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
       const modelInfo = await FileSystem.getInfoAsync(this._modelPath);
+
       
       if (!modelInfo.exists) {
         console.log('Translation model not found');

@@ -56,7 +56,7 @@
         {
           "ios": {
             "newArchEnabled": false,
-            "deploymentTarget": "16.0"
+            "deploymentTarget": "16.0",
           },
           "android": {
             "newArchEnabled": false

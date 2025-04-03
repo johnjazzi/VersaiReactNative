@@ -26,7 +26,6 @@ sh ./models/download-ggml-model.sh base
 yarn install
 ```
 
-
 ### TO RUN ON DEVICE IN DEV MODE
 ```
 npx expo prebuild --clean

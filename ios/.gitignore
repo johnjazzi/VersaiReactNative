@@ -4,11 +4,6 @@
 
 # Xcode
 #
-/*
-!.gitignore
-!Podfile
-!Podfile.lock
-
 build/
 *.pbxuser
 !default.pbxuser

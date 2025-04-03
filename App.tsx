@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View, Button, Platform, ScrollView, Modal, Switch, TextInput, TouchableOpacity} from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LANGUAGE_MAP, LanguageMapping } from './services/Common';
+import { Asset } from 'expo-asset';
 
 import { LogBox } from 'react-native';
 import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
@@ -98,6 +99,7 @@ export function Main() {
         
       } catch (error: any) {
         setLoadingStatus('Error initializing models: ' + error.message);
+        console.error('Model initialization error:', error);
       }
 
     })();
@@ -146,20 +148,18 @@ export function Main() {
       if (!transcriptionContext || !transcriptionInitialized) return;
       setRecordingLanguage(language);
 
-      if (Platform.OS === 'ios') {
-        await AudioSessionIos.setCategory(
-          AudioSessionIos.Category.PlayAndRecord,
-          [AudioSessionIos.CategoryOption.MixWithOthers]
-        );
-        await AudioSessionIos.setMode(AudioSessionIos.Mode.Default);
-        await AudioSessionIos.setActive(true);
-      }
-
       const { stop, subscribe } = await transcriptionContext.transcribeRealtime({
         language: language,
-        realtimeAudioSliceSec: 20,
-        realtimeAudioSec: 120,
-
+        audioSessionOnStartIos: {
+          category: AudioSessionIos.Category.PlayAndRecord,
+          options: [
+            AudioSessionIos.CategoryOption.MixWithOthers,
+            AudioSessionIos.CategoryOption.DefaultToSpeaker
+          ],
+          mode: AudioSessionIos.Mode.VideoChat, // Use VoiceChat mode which handles echo cancellation better
+          active: true,
+        },
+        audioSessionOnStopIos: 'restore',
       });
 
       setStopRecording(() => stop);
@@ -172,7 +172,7 @@ export function Main() {
         if (data?.result) {
           currentTranscript = {text: data.result, recordingLanguage: language};
           setTranscript(currentTranscript.text);
-          console.log(`Process time: ${processTime}ms`)
+          console.log(`Process time: ${processTime}ms`);
         }
 
         if (!isCapturing) {

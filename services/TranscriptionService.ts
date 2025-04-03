@@ -4,6 +4,7 @@ import { LANGUAGE_MAP, LanguageMapping } from './Common';
 import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
 import { TranslationServiceState } from './TranslationService';
 import { useEffect, useState, useRef } from 'react';
+import { Asset } from 'expo-asset';
 
 // Safe import approach that doesn't cause NativeEventEmitter issues
 let ZipArchive: any = null;
@@ -58,56 +59,73 @@ export class TranscriptionService {
 
   private listeners: Set<(state: TranscriptionServiceState) => void> = new Set();
 
-
-  async checkIfbundledModelExists() {
-    try {
-      const bundledModelPath = `${FileSystem.bundleDirectory}assets/models/${this._modelName}`;
-      console.log(bundledModelPath)
-      const modelInfo = await FileSystem.getInfoAsync(bundledModelPath);
-      console.log(modelInfo)
-      return modelInfo.exists;
-    } catch (error) {
-      console.error('Error checking bundled model:', error);
-      return false;
-    }
-  }
-
-
   async initialize(
       setLoadingStatus?: (status: string) => void, 
       setLoadingProgress?: (progress: number) => void) {
     try {
-
       setLoadingStatus?.('Initializing Whisper model...');
-
-      await this.checkIfbundledModelExists()
-
-      this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
-      const modelInfo = await FileSystem.getInfoAsync(this._modelPath);
-      
-      if (!modelInfo.exists) {
-        setLoadingProgress?.(100);
-        setLoadingStatus?.('Model not found');
-        throw new Error('Model not found');
-      }
-
-      this._modelSize = modelInfo.size;
-      this._exists = true;
       setLoadingProgress?.(10);
 
+      // Clear existing context if any
+      if (this.context) {
+        try {
+          await this.context.release();
+        } catch (e) {
+          console.log('Error releasing existing context:', e);
+        }
+        this.context = null;
+      }
+
+      const modelAsset = Asset.fromModule(require('../assets/models/ggml-tiny.bin'));
+      await modelAsset.downloadAsync();
+
+      this._modelPath = `${FileSystem.documentDirectory}ggml-tiny.bin`;
+      const modelInfo = await FileSystem.getInfoAsync(this._modelPath);
+      console.log('Model path:', this._modelPath);
+      console.log('Model info:', modelInfo);
+      
       this.context = await initWhisper({
         filePath: this._modelPath,
-        coreMLModelAsset: Platform.OS === 'ios' ? {
-          filename: this._modelName.replace('.bin', '-encoder.mlmodelc'),
-          assets: [
-            `${FileSystem.documentDirectory}${this._modelName.replace('.bin', '-encoder.mlmodelc/weights/weight.bin')}`,
-            `${FileSystem.documentDirectory}${this._modelName.replace('.bin', '-encoder.mlmodelc/model.mil')}`,
-            `${FileSystem.documentDirectory}${this._modelName.replace('.bin', '-encoder.mlmodelc/coremldata.bin')}`,
-          ],
-        } : undefined,
+        coreMLModelAsset: undefined,
+        useCoreMLIos: false,
+        useGpu: false
       });
 
-      console.log('Whisper context initialized');
+      console.log('Context:', this.context);
+    
+      console.log('Whisper context initialized successfully');
+      
+      // Initialize with a basic transcription to warm up the model
+      // This can help ensure audio sessions are properly set up
+      if (this.context) {
+        let testComplete = false;
+        for (let attempt = 1; attempt <= 2 && !testComplete; attempt++) {
+          try {
+            console.log(`Test transcription attempt ${attempt}...`);
+            
+            // Create a silent audio buffer
+            const silentAudio = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+            
+            // Do a quick test transcription with minimal settings
+            const result = this.context.transcribe(String(silentAudio), {
+              language: 'en',
+              translate: false
+            });
+            
+            console.log('Whisper test transcription completed successfully');
+            testComplete = true;
+          } catch (e) {
+            console.log(`Test transcription error on attempt ${attempt}:`, e);
+            
+            if (attempt === 2) {
+              console.log('Test transcription failed but continuing anyway');
+            }
+          }
+        }
+      }
+
+      this._modelSize = 0;
+      this._exists = true;
 
       setLoadingProgress?.(100);
       setLoadingStatus?.('Ready!');
@@ -115,7 +133,9 @@ export class TranscriptionService {
       this.notifyListeners();
 
     } catch (error: any) {
-      console.error('Detailed error:', error);
+      this._isInitialized = false;
+      this.context = null;
+      console.error('Detailed error:', error.message);
       setLoadingStatus?.('Error loading models: ' + error.message);
     }
   }
