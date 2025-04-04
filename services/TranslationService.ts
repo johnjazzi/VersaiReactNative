@@ -189,7 +189,9 @@ export class TranslationService {
       }
 
       this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
+      console.log('Model path:', this._modelPath);
       const modelInfo = await FileSystem.getInfoAsync(this._modelPath);
+
       
       if (!modelInfo.exists) {
         console.log('Translation model not found');
@@ -361,30 +363,18 @@ export class TranslationService {
   }
 
   async translate(text: string, sourceLang: string, targetLang: string): Promise<string> {
-    if (!text) return text;
-    
-    try {
-      // On simulator, always use device translation regardless of setting
-      if (!this._isRealDevice) {
-        if (this.context) {
-          return this.deviceTranslate(text, sourceLang, targetLang);
-        } else {
-          throw new Error('No translation model available on simulator');
-        }
-      }
-      
-      // On real device, use the selected option
-      if (this.settings.useCloudTranslation) {
+
+    switch (this.translationMode) {
+      case 'cloud':
+        return text;
+      case 'ios':
+        //if (this._isRealDevice) return text;
         return this.IOSTranslate(text, sourceLang, targetLang);
-      } else if (this.context) {
+      case 'llm':
+        if (!this.context || !this._exists) return text;
         return this.deviceTranslate(text, sourceLang, targetLang);
-      } else {
-        throw new Error('No translation model available');
-      }
-    } catch (error) {
-      console.error('Translation error details:', error);
-      throw error;
-    } 
+    }
+    
   }
 
   get isModelAvailable(): boolean {

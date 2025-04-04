@@ -23,17 +23,14 @@ import { transcriptionService , useTranscriptionService , TranscriptionServiceSt
 import { translationService , useTranslationService , TranslationServiceState, useIOSTranslateContext } from './services/TranslationService';
 
 export function Main() {
-  const whisper = useRef<WhisperContext>();
-  const [stopRecording, setStopRecording] = useState<(() => void) | null>(null);
   const [isModelInitialized, setIsModelInitialized] = useState(false);
-  const [transcript, setTranscript] = useState('');
   const [translatedTranscript, setTranslatedTranscript] = useState('');
   const [loadingStatus, setLoadingStatus] = useState<string>('');
   const [loadingProgress, setLoadingProgress] = useState<number>(0);
   const [transcriptionLog, setTranscriptionLog] = useState<{text: string, translatedText: string, timestamp: Date, languageInfo?: string}[]>([]);
   const [currentSpeaker, setCurrentSpeaker] = useState('Speaker 1');
   const autoSaveInterval = useRef<NodeJS.Timeout>();
-  const stopRecordingRef = useRef<(() => void) | null>(null);
+
   
   const [languageOne, setLanguageOne] = useState<string>('pt');
   const [languageTwo, setLanguageTwo] = useState<string>('en');
@@ -45,6 +42,9 @@ export function Main() {
 
   const [activeTab, setActiveTab] = useState<'translation' | 'settings'>('translation');
 
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  const [expandedItems, setExpandedItems] = useState<{[key: number]: boolean}>({});
 
   useIOSTranslateContext();
 
@@ -63,7 +63,9 @@ export function Main() {
     modelName: transcriptionModelName,
     modelSize: transcriptionModelSize,
     isInitialized: transcriptionInitialized,
-    whisperContext: transcriptionContext
+    whisperContext: transcriptionContext,
+    isRecording: isRecording,
+    transcriptionResult: transcriptionResult
   } = useTranscriptionService();
 
   // Helper function to get the target language based on recording language
@@ -103,110 +105,109 @@ export function Main() {
     })();
   }, [isModelInitialized]);
 
-  const saveToTranscriptionLog = async (currentTranscript: {text: string, recordingLanguage: string}) => {
-    //Get full language names from language codes
-    const sourceLanguageName = getLanguageDisplayName(currentTranscript.recordingLanguage);
-    const targetLanguageCode = getTargetLanguage(currentTranscript.recordingLanguage);
-    const targetLanguageName = getLanguageDisplayName(targetLanguageCode);
-    
-    // Skip if transcript is empty
-    if (!currentTranscript.text.trim()) return;
-    
-    // Split transcript into sentences
-    const sentences = currentTranscript.text.match(/[^.!?]+[.!?]+/g) || [currentTranscript.text];
-    
-    // Group sentences into chunks of max 4
-    const chunks = [];
-    for (let i = 0; i < sentences.length; i += 4) {
-      chunks.push(sentences.slice(i, i + 4).join(' '));
-    }
-    
-    // Process each chunk
-    for (const chunk of chunks) {
-      const translatedText = await translationService.translate(
-        chunk, 
-        currentTranscript.recordingLanguage, 
-        targetLanguageCode
-      );
-      
+
+  // const startRecording = async (language: string) => {
+
+  //   if (Platform.OS === 'ios') {
+  //     await AudioSessionIos.setCategory(
+  //       AudioSessionIos.Category.PlayAndRecord,
+  //       [AudioSessionIos.CategoryOption.MixWithOthers]
+  //     );
+  //     await AudioSessionIos.setMode(AudioSessionIos.Mode.Default);
+  //     await AudioSessionIos.setActive(true);
+  //   }
+
+  //   //TODO Show a dot that is recording and a waveform so that user can see their voice is being picked up
+
+  //   try {
+  //     if (!transcriptionContext || !transcriptionInitialized) return;
+  //     setRecordingLanguage(language);
+
+  //     const { stop, subscribe } = await transcriptionContext.transcribeRealtime({
+  //       language: language,
+  //     });
+
+  //     setStopRecording(() => stop);
+  //     stopRecordingRef.current = stop;
+
+  //     let currentTranscript = {text: '', recordingLanguage: recordingLanguage};
+
+  //     subscribe(evt => {
+  //       const { isCapturing, data, processTime } = evt;
+  //       if (data?.result) {
+  //         currentTranscript = {text: data.result, recordingLanguage: language};
+  //         setTranscript(currentTranscript.text);
+  //         console.log(`Process time: ${processTime}ms`)
+  //       }
+
+  //       if (!isCapturing) {
+  //         saveToTranscriptionLog(currentTranscript);
+  //         setTranscript('');
+  //         setTranslatedTranscript('');
+  //         setStopRecording(null);
+  //         stopRecordingRef.current = null;
+  //       }
+  //     });
+  //   } catch (error) {
+  //     console.error('Recording error:', error);
+  //   }
+  // };
+
+  // translate when the transcription changes
+  useEffect(() => { async function translateTranscript() {
+
+    if (!transcriptionResult) return;
+
+    if (transcriptionResult === '') {
+        setTranslatedTranscript('');
+      }
+
+    const targetLanguage = getTargetLanguage(recordingLanguage);
+    const translatedText = await translationService.translate(transcriptionResult, recordingLanguage, targetLanguage);
+    setTranslatedTranscript(translatedText);
+
+  }
+  translateTranscript();
+  }, [transcriptionResult]);
+
+  // save the transcription to the log when recording stops
+  useEffect( () => {
+    // Register the callback when component mounts
+    transcriptionService.setOnTranscriptionCompleteCallback( async (finalText, language) => {
+
+      if (!finalText.trim()) return;
+
+      const sourceLanguageName = getLanguageDisplayName(language);
+      const targetLanguage = getTargetLanguage(language);
+      const targetLanguageName = getLanguageDisplayName(targetLanguage);
+      const translatedText = await translationService.translate(finalText, language, targetLanguage);
+      setTranslatedTranscript('');
       setTranscriptionLog(prev => [{
-        text: chunk, 
+        text: finalText, 
         translatedText: translatedText,
         timestamp: new Date(),
         languageInfo: `${sourceLanguageName} → ${targetLanguageName}`
       }, ...prev]);
-    }
-  }
+    });
+    
+    // Clean up when component unmounts
+    return () => {
+      transcriptionService.setOnTranscriptionCompleteCallback(null);
+    };
+  }, []);
 
-  const startRecording = async (language: string) => {
-
-    //TODO Show a dot that is recording and a waveform so that user can see their voice is being picked up
-
-    try {
-      if (!transcriptionContext || !transcriptionInitialized) return;
-      setRecordingLanguage(language);
-
-      if (Platform.OS === 'ios') {
-        await AudioSessionIos.setCategory(
-          AudioSessionIos.Category.PlayAndRecord,
-          [AudioSessionIos.CategoryOption.MixWithOthers]
-        );
-        await AudioSessionIos.setMode(AudioSessionIos.Mode.Default);
-        await AudioSessionIos.setActive(true);
-      }
-
-      const { stop, subscribe } = await transcriptionContext.transcribeRealtime({
-        language: language,
-        realtimeAudioSliceSec: 20,
-        realtimeAudioSec: 120,
-
-      });
-
-      setStopRecording(() => stop);
-      stopRecordingRef.current = stop;
-
-      let currentTranscript = {text: '', recordingLanguage: recordingLanguage};
-
-      subscribe(evt => {
-        const { isCapturing, data, processTime } = evt;
-        if (data?.result) {
-          currentTranscript = {text: data.result, recordingLanguage: language};
-          setTranscript(currentTranscript.text);
-          console.log(`Process time: ${processTime}ms`)
-        }
-
-        if (!isCapturing) {
-          saveToTranscriptionLog(currentTranscript);
-          setTranscript('');
-          setTranslatedTranscript('');
-          setStopRecording(null);
-          stopRecordingRef.current = null;
-        }
-      });
-    } catch (error) {
-      console.error('Recording error:', error);
-    }
-  };
 
   const switchSpeaker = async () => {
-    if (stopRecordingRef.current) {
+    if (isRecording) {
       const newLanguage = recordingLanguage === languageOne ? languageTwo : languageOne;
       setRecordingLanguage(newLanguage);
-      stopRecordingRef.current();
-      await new Promise(resolve => setTimeout(resolve, 50));
-      startRecording(newLanguage);
+      transcriptionService.stopTranscription();
+ //     await new Promise(resolve => setTimeout(resolve, 50));
+      transcriptionService.startTranscription(newLanguage);
     }
   };
 
-  useEffect(() => { async function translateTranscript() {
-      if (transcript) {
-        const targetLanguage = getTargetLanguage(recordingLanguage);
-        const translatedText = await translationService.translate(transcript, recordingLanguage, targetLanguage);
-        setTranslatedTranscript(translatedText);
-      }
-    }
-  translateTranscript();
-  }, [transcript]);
+
 
   // Clean up interval on component unmount
   useEffect(() => {
@@ -227,6 +228,12 @@ export function Main() {
     }
   };
 
+  const toggleExpanded = (index: number) => {
+    setExpandedItems(prev => ({
+      ...prev,
+      [index]: !prev[index]
+    }));
+  };
 
   return (
     <View style={styles.container}>
@@ -247,7 +254,71 @@ export function Main() {
 
     {activeTab === 'translation' ? (
       <View style={styles.content}>
-        <View style={[styles.topSection, { position: 'relative' }]}>
+        <ScrollView 
+          style={styles.logContainer}
+          ref={scrollViewRef}
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+        >
+          {transcriptionLog.map((item, index) => (
+            <View key={index} style={styles.logItem}>
+              <View style={styles.logHeader}>
+                <Text style={styles.languageInfo}>{item.languageInfo}</Text>
+                <Text style={styles.logTimestamp}>{item.timestamp.toLocaleTimeString()}</Text>
+              </View>
+              <Text>{item.translatedText}</Text>
+              {item.text && (
+                <TouchableOpacity 
+                  onPress={() => toggleExpanded(index)}
+                  style={styles.sourceTextContainer}
+                >
+                  <Text 
+                    style={styles.sourceText}
+                    numberOfLines={expandedItems[index] ? undefined : 1}
+                  >
+                    {item.text}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={styles.topSection}>
+
+       <View style={styles.transcriptContainer}>
+            {isRecording && (
+              <Text style={styles.recordingContainer}>
+                <Text style={styles.recordingLabel}>Recording</Text>
+                <Text> {getLanguageDisplayName(recordingLanguage)} → {getLanguageDisplayName(getTargetLanguage(recordingLanguage))}</Text>
+              </Text>
+            )}
+            <Text>{translatedTranscript}</Text>
+            <TouchableOpacity 
+              onPress={() => toggleExpanded(-1)}
+              style={styles.sourceTextContainer}
+            >
+              <Text 
+                style={styles.sourceText}
+                numberOfLines={expandedItems[-1] ? undefined : 1}
+              >
+                {transcriptionResult}
+              </Text>
+            </TouchableOpacity>
+        </View>
+
+
+          <View style={styles.row}>
+            <Button 
+              title="Stop" 
+              onPress={() => transcriptionService.stopTranscription()} 
+              disabled={!isRecording}
+            />
+            <Button 
+              title="Switch Speaker" 
+              onPress={() => switchSpeaker()}
+            />
+          </View>
+
           <View style={styles.row}>
             <View style={styles.buttonWithIcon}>
               <Text style={styles.languageText}>
@@ -265,8 +336,11 @@ export function Main() {
             <MaterialIcons 
               name="mic" 
               size={28} 
-              color={!transcriptionInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
-              onPress={() => startRecording(languageOne)}
+              color={!transcriptionInitialized || !!isRecording ? '#999999' : '#007AFF'} 
+              onPress={() => {
+                setRecordingLanguage(languageOne);
+                transcriptionService.startTranscription(languageOne)
+              }}
               style={styles.iconButton}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             />
@@ -289,54 +363,18 @@ export function Main() {
             <MaterialIcons 
               name="mic" 
               size={28} 
-              color={!transcriptionInitialized || !!stopRecording ? '#999999' : '#007AFF'} 
-              onPress={() => startRecording(languageTwo)}
+              color={!transcriptionInitialized || !!isRecording ? '#999999' : '#007AFF'} 
+              onPress={() => {
+                setRecordingLanguage(languageTwo);
+                transcriptionService.startTranscription(languageTwo)
+              }}
               style={styles.iconButton}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             />
           </View>
 
-          <View style={styles.row}>
-            <Button 
-              title="Stop" 
-              onPress={() => stopRecording?.()} 
-              disabled={!stopRecording}
-            />
-            <Button 
-              title="Switch Speaker" 
-              onPress={switchSpeaker}
-              disabled={!stopRecording}
-            />
-          </View>
 
-          <View style={styles.transcriptContainer}>
-            {/* TODO make the transcript show up typewriter style */}
-            {/* TODO show the waveform being recorded */}
-            {stopRecording && (
-              <Text style={styles.recordingContainer}>
-                <Text style={styles.recordingLabel}>Recording</Text>
-                <Text> {getLanguageDisplayName(recordingLanguage)} → {getLanguageDisplayName(getTargetLanguage(recordingLanguage))}</Text>
-              </Text>
-            )}
-            <Text>{translatedTranscript}</Text>
-            <Text style={{color: '#888', fontSize: 14}}>{transcript}</Text>
-          </View>
         </View>
-
-        <ScrollView style={styles.logContainer}>
-          {transcriptionLog.map((item, index) => (
-            <View key={index} style={styles.logItem}>
-              <View style={styles.logHeader}>
-                <Text style={styles.languageInfo}>{item.languageInfo}</Text>
-                <Text style={styles.logTimestamp}>{item.timestamp.toLocaleTimeString()}</Text>
-              </View>
-              <Text>{item.translatedText}</Text>
-              {item.text && (
-                <Text style={{color: '#888', fontSize: 14}}>{item.text}</Text>
-              )}
-            </View>
-          ))}
-        </ScrollView>
       </View>
     ) : (
       <View style={styles.settingsContainer}>
@@ -536,6 +574,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     paddingBottom: 20,
     zIndex: 1,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
   },
   row: {
     flexDirection: 'row',
@@ -556,6 +600,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '90%',
     alignSelf: 'center',
+    marginBottom: 200, // Space for the controls at the bottom
   },
   recordingContainer: {
     flexDirection: 'row',
@@ -702,6 +747,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    flexDirection: 'column',
   },
   settingsContainer: {
     flex: 1,
@@ -784,6 +830,13 @@ const styles = StyleSheet.create({
   },
   radioTextDisabled: {
     color: '#CCCCCC',
+  },
+  sourceTextContainer: {
+    marginTop: 4,
+  },
+  sourceText: {
+    color: '#888',
+    fontSize: 14,
   },
 });
 

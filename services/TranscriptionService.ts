@@ -21,6 +21,8 @@ export interface TranscriptionServiceState {
   modelSize: number;
   isInitialized: boolean;
   whisperContext: WhisperContext | null;
+  transcriptionResult: string;
+  isRecording: boolean;
 }
 
 export function useTranscriptionService() {
@@ -55,9 +57,17 @@ export class TranscriptionService {
   private _modelSize: number = 0;
   private _isInitialized: boolean = false;  
   private context: WhisperContext | null = null;
-
+  private _transcriptionResult: string = '';
+  private _stopRecording: (() => void) | null = null;
+  private _isRecording: boolean = false;
+  private _isCapturing: boolean = false;
+  private _recordingLanguage: string = 'en';
   private listeners: Set<(state: TranscriptionServiceState) => void> = new Set();
-
+  private _onTranscriptionCompleteCallback: ((text: string, language: string) => void) | null = null;
+ 
+  setOnTranscriptionCompleteCallback(callback: ((text: string, language: string) => void) | null) {
+    this._onTranscriptionCompleteCallback = callback;
+  }
 
   async checkIfbundledModelExists() {
     try {
@@ -79,9 +89,6 @@ export class TranscriptionService {
     try {
 
       setLoadingStatus?.('Initializing Whisper model...');
-
-      await this.checkIfbundledModelExists()
-
       this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
       const modelInfo = await FileSystem.getInfoAsync(this._modelPath);
       
@@ -94,6 +101,10 @@ export class TranscriptionService {
       this._modelSize = modelInfo.size;
       this._exists = true;
       setLoadingProgress?.(10);
+
+      // this.context = await initWhisper({
+      //   filePath: this._modelPath,
+      // });
 
       this.context = await initWhisper({
         filePath: this._modelPath,
@@ -109,8 +120,16 @@ export class TranscriptionService {
 
       console.log('Whisper context initialized');
 
+      setLoadingProgress?.(80);
+
+      console.log('warming transcription context');
+      const silentWav = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+      //this.context.transcribe(silentWav)
+      console.log('transcription context warmed up');
+
       setLoadingProgress?.(100);
       setLoadingStatus?.('Ready!');
+
       this._isInitialized = true;
       this.notifyListeners();
 
@@ -216,13 +235,70 @@ export class TranscriptionService {
     }
   }
 
+
+  async startTranscription(language: string = 'en') {
+    if (!this.context) {
+      throw new Error('Whisper context not initialized');
+    }
+
+    if (this._isRecording) return;
+
+    this._isRecording = true;
+    this._recordingLanguage = language;
+    this._transcriptionResult = '';
+    this.notifyListeners()
+
+    await AudioSessionIos.setCategory(
+      AudioSessionIos.Category.PlayAndRecord, 
+      [AudioSessionIos.CategoryOption.MixWithOthers],
+    )
+    await AudioSessionIos.setMode(AudioSessionIos.Mode.Default)
+    await AudioSessionIos.setActive(true)
+
+    const { stop, subscribe } = await this.context.transcribeRealtime({
+      language: language,
+      realtimeAudioMinSec: 1.0,
+    })
+
+    this._stopRecording = stop;
+
+    subscribe(evt => {
+      const { isCapturing, data, processTime, recordingTime } = evt
+      this._isCapturing = isCapturing;
+
+      if (data?.result) {
+        this._transcriptionResult = data.result;
+        //console.log(isCapturing, data, processTime, recordingTime)
+        this.notifyListeners(); 
+      }
+
+      if (!isCapturing) {
+        console.log('Finished realtime transcribing')
+      }
+    })
+  }
+
+  async stopTranscription() { 
+    if (!this.context || !this._stopRecording) return;
+
+    this._stopRecording();
+    await new Promise(resolve => setTimeout(resolve, 100)); //wait for any existing transcriptions to end
+
+    this._isRecording = false;
+    this._onTranscriptionCompleteCallback?.(this._transcriptionResult, this._recordingLanguage);
+    this._transcriptionResult = '';
+    this.notifyListeners();
+  }
+
   getState(): TranscriptionServiceState {
     return {
       modelExists: this._exists,
       modelName: this._modelName,
       modelSize: this._modelSize,
       isInitialized: this._isInitialized,
-      whisperContext: this.context
+      whisperContext: this.context,
+      transcriptionResult: this._transcriptionResult,
+      isRecording: this._isRecording
     };
   }
 
