@@ -45,6 +45,7 @@ export function Main() {
   const scrollViewRef = useRef<ScrollView>(null);
 
   const [expandedItems, setExpandedItems] = useState<{[key: number]: boolean}>({});
+  const [textSize, setTextSize] = useState(18); // Default text size
 
   useIOSTranslateContext();
 
@@ -105,53 +106,6 @@ export function Main() {
     })();
   }, [isModelInitialized]);
 
-
-  // const startRecording = async (language: string) => {
-
-  //   if (Platform.OS === 'ios') {
-  //     await AudioSessionIos.setCategory(
-  //       AudioSessionIos.Category.PlayAndRecord,
-  //       [AudioSessionIos.CategoryOption.MixWithOthers]
-  //     );
-  //     await AudioSessionIos.setMode(AudioSessionIos.Mode.Default);
-  //     await AudioSessionIos.setActive(true);
-  //   }
-
-  //   //TODO Show a dot that is recording and a waveform so that user can see their voice is being picked up
-
-  //   try {
-  //     if (!transcriptionContext || !transcriptionInitialized) return;
-  //     setRecordingLanguage(language);
-
-  //     const { stop, subscribe } = await transcriptionContext.transcribeRealtime({
-  //       language: language,
-  //     });
-
-  //     setStopRecording(() => stop);
-  //     stopRecordingRef.current = stop;
-
-  //     let currentTranscript = {text: '', recordingLanguage: recordingLanguage};
-
-  //     subscribe(evt => {
-  //       const { isCapturing, data, processTime } = evt;
-  //       if (data?.result) {
-  //         currentTranscript = {text: data.result, recordingLanguage: language};
-  //         setTranscript(currentTranscript.text);
-  //         console.log(`Process time: ${processTime}ms`)
-  //       }
-
-  //       if (!isCapturing) {
-  //         saveToTranscriptionLog(currentTranscript);
-  //         setTranscript('');
-  //         setTranslatedTranscript('');
-  //         setStopRecording(null);
-  //         stopRecordingRef.current = null;
-  //       }
-  //     });
-  //   } catch (error) {
-  //     console.error('Recording error:', error);
-  //   }
-  // };
 
   // translate when the transcription changes
   useEffect(() => { async function translateTranscript() {
@@ -235,6 +189,27 @@ export function Main() {
     }));
   };
 
+  const renderSettings = () => (
+    <View style={styles.settingsContainer}>
+      <Text style={styles.settingsTitle}>Text Size</Text>
+      <View style={styles.textSizeControls}>
+        <TouchableOpacity 
+          onPress={() => setTextSize(Math.max(10, textSize - 2))}
+          style={styles.textSizeButton}
+        >
+          <Text style={styles.textSizeButtonText}>A-</Text>
+        </TouchableOpacity>
+        <Text style={styles.textSizeValue}>{textSize}</Text>
+        <TouchableOpacity 
+          onPress={() => setTextSize(Math.min(28, textSize + 2))}
+          style={styles.textSizeButton}
+        >
+          <Text style={styles.textSizeButtonText}>A+</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
     <View style={styles.tabBar}>
@@ -253,59 +228,55 @@ export function Main() {
     </View>
 
     {activeTab === 'translation' ? (
-      <View style={styles.content}>
-        <ScrollView 
-          style={styles.logContainer}
-          ref={scrollViewRef}
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-        >
-          {transcriptionLog.map((item, index) => (
-            <View key={index} style={styles.logItem}>
-              <View style={styles.logHeader}>
-                <Text style={styles.languageInfo}>{item.languageInfo}</Text>
-                <Text style={styles.logTimestamp}>{item.timestamp.toLocaleTimeString()}</Text>
-              </View>
-              <Text>{item.translatedText}</Text>
-              {item.text && (
-                <TouchableOpacity 
-                  onPress={() => toggleExpanded(index)}
-                  style={styles.sourceTextContainer}
-                >
-                  <Text 
-                    style={styles.sourceText}
-                    numberOfLines={expandedItems[index] ? undefined : 1}
+      <View style={styles.translationContainer}>
+        <View style={styles.topHalf}>
+          <ScrollView>
+            {[...transcriptionLog].map((item, index) => (
+              <View key={index} style={styles.logItem}>
+                <View style={styles.logHeader}>
+                  <Text style={styles.languageInfo}>{item.languageInfo}</Text>
+                  <Text style={styles.logTimestamp}>{item.timestamp.toLocaleTimeString()}</Text>
+                </View>
+                <Text style={[styles.logText, { fontSize: textSize }]}>{item.translatedText}</Text>
+                {item.text && (
+                  <TouchableOpacity 
+                    onPress={() => toggleExpanded(index)}
+                    style={styles.sourceTextContainer}
                   >
-                    {item.text}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ))}
-        </ScrollView>
-
-        <View style={styles.topSection}>
-
-       <View style={styles.transcriptContainer}>
+                    <Text 
+                      style={[styles.sourceText, { fontSize: textSize }]}
+                      numberOfLines={expandedItems[index] ? undefined : 1}
+                    >
+                      {item.text}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+        
+        <View style={styles.bottomHalf}>
+          <View style={styles.transcriptContainer}>
             {isRecording && (
               <Text style={styles.recordingContainer}>
                 <Text style={styles.recordingLabel}>Recording</Text>
                 <Text> {getLanguageDisplayName(recordingLanguage)} → {getLanguageDisplayName(getTargetLanguage(recordingLanguage))}</Text>
               </Text>
             )}
-            <Text>{translatedTranscript}</Text>
+            <Text style={[styles.translatedText, { fontSize: textSize }]}>{translatedTranscript}</Text>
             <TouchableOpacity 
               onPress={() => toggleExpanded(-1)}
               style={styles.sourceTextContainer}
             >
               <Text 
-                style={styles.sourceText}
+                style={[styles.sourceText, { fontSize: textSize }]}
                 numberOfLines={expandedItems[-1] ? undefined : 1}
               >
                 {transcriptionResult}
               </Text>
             </TouchableOpacity>
-        </View>
-
+          </View>
 
           <View style={styles.row}>
             <Button 
@@ -333,17 +304,23 @@ export function Main() {
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               />
             </View>
-            <MaterialIcons 
-              name="mic" 
-              size={28} 
-              color={!transcriptionInitialized || !!isRecording ? '#999999' : '#007AFF'} 
+            <TouchableOpacity 
               onPress={() => {
                 setRecordingLanguage(languageOne);
                 transcriptionService.startTranscription(languageOne)
               }}
-              style={styles.iconButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            />
+              disabled={!transcriptionInitialized || !!isRecording}
+              style={[
+                styles.micButton,
+                (!transcriptionInitialized || !!isRecording) && styles.micButtonDisabled
+              ]}
+            >
+              <MaterialIcons 
+                name="mic" 
+                size={28} 
+                color="white"
+              />
+            </TouchableOpacity>
           </View>
 
           <View style={styles.row}>
@@ -360,20 +337,24 @@ export function Main() {
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               />
             </View>
-            <MaterialIcons 
-              name="mic" 
-              size={28} 
-              color={!transcriptionInitialized || !!isRecording ? '#999999' : '#007AFF'} 
+            <TouchableOpacity 
               onPress={() => {
                 setRecordingLanguage(languageTwo);
                 transcriptionService.startTranscription(languageTwo)
               }}
-              style={styles.iconButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            />
+              disabled={!transcriptionInitialized || !!isRecording}
+              style={[
+                styles.micButton,
+                (!transcriptionInitialized || !!isRecording) && styles.micButtonDisabled
+              ]}
+            >
+              <MaterialIcons 
+                name="mic" 
+                size={28} 
+                color="white"
+              />
+            </TouchableOpacity>
           </View>
-
-
         </View>
       </View>
     ) : (
@@ -381,19 +362,6 @@ export function Main() {
         <View style={styles.settingRow}>
           <Text style={styles.settingLabel}>Translation Provider</Text>
           <View style={styles.radioContainer}>
-            <TouchableOpacity 
-              style={styles.radioOption}
-              onPress={() => translationService.setTranslationMode('cloud')}
-              disabled={false} // Cloud always available
-            >
-              <View style={[
-                styles.radioButton, 
-                translationMode === 'cloud' && styles.radioButtonSelected
-              ]} />
-              <Text style={translationMode === 'cloud' ? styles.radioTextSelected : styles.radioText}>
-                Cloud
-              </Text>
-            </TouchableOpacity>
             
             <TouchableOpacity 
               style={styles.radioOption}
@@ -486,6 +454,8 @@ export function Main() {
             </View>
           )}
         </View>
+
+        {renderSettings()}
       </View>
     )}
 
@@ -570,16 +540,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     paddingTop: Platform.OS === 'ios' ? 50 : 30,
   },
-  topSection: {
+  bottomControls: {
     backgroundColor: '#fff',
     paddingBottom: 20,
-    zIndex: 1,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    paddingTop: 10,
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
+    height: 300,  // Fixed height for bottom controls
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 5,
   },
   row: {
     flexDirection: 'row',
@@ -600,7 +576,9 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '90%',
     alignSelf: 'center',
-    marginBottom: 200, // Space for the controls at the bottom
+  },
+  logContentContainer: {
+    paddingBottom: 20,
   },
   recordingContainer: {
     flexDirection: 'row',
@@ -626,6 +604,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
     paddingVertical: 8,
+    width: '100%',
   },
   logHeader: {
     flexDirection: 'row',
@@ -745,13 +724,25 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontWeight: '600',
   },
-  content: {
+  translationContainer: {
     flex: 1,
-    flexDirection: 'column',
+  },
+  topHalf: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  bottomHalf: {
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    backgroundColor: '#fff',
+    paddingVertical: 10,
   },
   settingsContainer: {
     flex: 1,
-    padding: 20,
+    padding: 16,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    marginBottom: 16,
   },
   settingRow: {
     flexDirection: 'row',
@@ -837,6 +828,53 @@ const styles = StyleSheet.create({
   sourceText: {
     color: '#888',
     fontSize: 14,
+  },
+  settingsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  textSizeControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  textSizeButton: {
+    padding: 8,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 4,
+  },
+  textSizeButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  textSizeValue: {
+    fontSize: 16,
+    marginHorizontal: 16,
+  },
+  translatedText: {
+    color: '#333',
+    fontSize: 14,
+  },
+  logText: {
+    color: '#333',
+    marginVertical: 4,
+  },
+  micButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  micButtonDisabled: {
+    backgroundColor: '#999999',
   },
 });
 
