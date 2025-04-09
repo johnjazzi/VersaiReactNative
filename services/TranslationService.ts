@@ -4,6 +4,7 @@ import { initLlama, LlamaContext } from 'llama.rn';
 import { LANGUAGE_MAP, LanguageMapping , getAppleCodeFromGoogleCode } from './Common';
 import { useEffect, useState, useRef } from 'react';
 import { useIOSTranslateTasks } from 'react-native-ios-translate-tasks';
+import RNFS from 'react-native-fs';
 
 // Import for Device
 let Device: any = null;
@@ -42,9 +43,10 @@ export interface TranslationSettings {
   googleApiKey?: string;
 }
 
+
 export class TranslationService {
-  private _modelName: string = 'Llama-3.2-1B-Instruct-Q8_0.gguf';
-  private _modelUrl: string = `https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/${this._modelName}`;
+  private _modelName: string = 'qwen2.5-1.5b-instruct-q4_0.gguf';
+  private _modelUrl: string = `https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q4_0.gguf`;
   private _modelPath: string = '';
   private _modelSize: number = 0 ;
   private _exists: boolean = false;
@@ -112,36 +114,26 @@ export class TranslationService {
     this.settings.googleApiKey = key;
   }
 
-  async updateModelInfo() {
+  async checkModelInfo() {
     try {
-      this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
-      console.log('Model path:', this._modelPath);
-
-      // Ensure directory exists
-      if (!FileSystem.documentDirectory) {
-        console.error('Document directory is null');
-        throw new Error('Document directory is null');
-      }
-
-      const dirInfo = await FileSystem.getInfoAsync(FileSystem.documentDirectory);
-      if (!dirInfo.exists) {
-        console.error('Document directory does not exist');
-        throw new Error('Document directory does not exist');
-      }
-
-      const info = await FileSystem.getInfoAsync(this._modelPath);
-      console.log('File info:', info);
-      this._modelSize = info.exists ? (info as any).size : 0;
-      this._exists = info.exists;
+      const dirInfo = await RNFS.readDir(RNFS.DocumentDirectoryPath);
+      
+      const modelFile = dirInfo.find(file => file.name === this._modelName);
+      if (!modelFile) {
+        this._exists = false;
+        this._modelSize = 0;
+        console.log('Model not found');
+        this.notifyListeners();
+        return false;
+      } 
+      this._exists = true;
+      this._modelPath = modelFile.path;
+      this._modelSize = modelFile.size;
       this.notifyListeners();
-      return {
-        exists: info.exists,
-        name: this._modelName,
-        size: this._modelSize,
-        path: this._modelPath
-      };
+      return true;
     } catch (error: any) {
       console.error('Error updating model info:', error);
+      
       throw error;
     }
   }
@@ -184,25 +176,17 @@ export class TranslationService {
       setLoadingProgress?.(10);
 
       if (this._isInitialized) {
-        console.log('Translation model already initialized');
-        return;
-      }
-
-      this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
-      console.log('Model path:', this._modelPath);
-      const modelInfo = await FileSystem.getInfoAsync(this._modelPath);
-
-      
-      if (!modelInfo.exists) {
-        console.log('Translation model not found');
-        setLoadingStatus?.('Translation model not found');
         setLoadingProgress?.(100);
         return;
       }
 
-      this._modelSize = modelInfo.size;
-      this._exists = true;
-      this.notifyListeners();
+      const modelInfo = await this.checkModelInfo();
+
+      if (!modelInfo) {;
+        setLoadingStatus?.('Translation model not found');
+        setLoadingProgress?.(100);
+        return;
+      }
       
       if (this.translationMode === 'cloud' || this.translationMode === 'ios') {
         setLoadingProgress?.(100);
@@ -215,6 +199,7 @@ export class TranslationService {
       return;
 
     } catch (error) {
+      setLoadingProgress?.(100);
       this._isInitialized = false;
       this.settings.useCloudTranslation = true;
       console.error('Translation initialization error:', error);
@@ -227,23 +212,37 @@ export class TranslationService {
     setLoadingStatus: (status: string) => void
   ): Promise<void> {
     try {
-      this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`
-      setLoadingStatus('Downloading model...');
-      const downloadResumable = FileSystem.createDownloadResumable(
-        this._modelUrl,
-        this._modelPath,
-        {},
-        (downloadProgress) => {
-          const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
-          onProgress(Math.round(progress * 100));
-          setLoadingStatus(`Downloading model... ${Math.round(progress * 100)}%`);
+      console.log('Downloading model...');
+      this._modelPath = `${RNFS.DocumentDirectoryPath}/${this._modelName}`
+      
+      const result = await RNFS.downloadFile({
+        fromUrl: this._modelUrl,
+        toFile: this._modelPath,
+        begin: () => {
+          setLoadingStatus('Downloading model...');
+          onProgress(0);
+        },
+        progress: res => {
+          const progress = (res.bytesWritten / res.contentLength) * 100;
+          onProgress(Math.round(progress));
+          setLoadingStatus(
+            `Downloading ${this._modelName} ... ${Math.round(progress)}%`
+          );
         }
-      );
+      }).promise;
+
+      if (result.statusCode === 200) {
+        setLoadingStatus('Model downloaded successfully!');
+        onProgress(100);
+      } else {
+        console.error(
+          `Download failed with status: ${result.statusCode}`,
+        );
+        throw new Error(`Download failed with status: ${result.statusCode}`);
+      }
+
       
-      const result = await downloadResumable.downloadAsync();
-      if (!result?.uri) throw new Error('Download failed');
-      
-      await this.updateModelInfo();
+      await this.checkModelInfo();
       setLoadingStatus('Model downloaded successfully!');
       
       // Initialize after download
@@ -258,8 +257,14 @@ export class TranslationService {
   async deleteModel(setLoadingStatus: (status: string) => void): Promise<void> {
     try {
       setLoadingStatus('Deleting model...');
-      await FileSystem.deleteAsync(this._modelPath);
+      await RNFS.unlink(this._modelPath);
+      this.context?.release();
       this.context = null;
+      this._isInitialized = false;
+      this._exists = false;
+      this._modelPath = '';
+      this._modelSize = 0;
+      this.notifyListeners();
       setLoadingStatus('Model deleted successfully!');
     } catch (error: any) {
       console.error('Delete error:', error);
@@ -269,72 +274,37 @@ export class TranslationService {
   }
 
 
-  async cloudTranslate(text: string, sourceLang: string, targetLang: string): Promise<string> {
-    if (!text) return text;
-    if (!this.settings.googleApiKey) {
-      console.error('Google API key not configured');
-      throw new Error('Google API key not configured');
-      
-    }
-    try {
-      // Find the language mapping by code
-
-      const response = await fetch(
-        `https://translation.googleapis.com/language/translate/v2?key=${this.settings.googleApiKey}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            q: text,
-            source: sourceLang,
-            target: targetLang,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Google Translate API error:', errorData);
-        throw new Error(`Translation API error: ${errorData.error?.message || response.statusText}`);
-      }
-
-      const data = await response.json();
-      if (data.data?.translations?.[0]?.translatedText) {
-        return data.data.translations[0].translatedText;
-      }
-      return '';
-    } catch (error) {
-      console.error('Cloud translation error:', error);
-      throw error;
-    }
-  }
-
   async deviceTranslate(text: string, sourceLang: string, targetLang: string): Promise<string> {
     if (!text) return text;
     if (!this.context) {
       throw new Error('Translation model not initialized');
     }
 
+
+    
     try {
+      const systemPrompt = `
+      you are a translation assistant, you will be given a text and you will need to translate it from one language to another.
+      you will need to return the translated text and nothing else.
+      `
       const prompt = `
-      <|begin_of_text|><|start_header_id|>system<|end_header_id|>
-
-      convert the following text from ${sourceLang} to ${targetLang}, return only the translated text and nothing else<|eot_id|><|start_header_id|>user<|end_header_id|>
-
-      ${text}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+      <${LANGUAGE_MAP[sourceLang as keyof LanguageMapping]}> "${text}" <${LANGUAGE_MAP[targetLang as keyof LanguageMapping]}>
       `
       
       const result = await this.context.completion({
-        prompt,
+        messages:[
+          {role: 'system', content: systemPrompt},
+          {role: 'user', content: prompt}
+        ],
         n_predict: text.length + 20,
-        stop: ['\n','<|eot_id|>' ],  // Simplified stop token
+        stop: ['\n','<|im_end|>' ],  // Simplified stop token
         temperature: 0.7,
         top_p: 0.95,
       })
 
-      return result.text;
+      const out = result.text.replace(/<\|im_end\|>/g, "").replace(/"/g, "");
+
+      return out;
     } catch (error) {
       console.error('Device translation error:', error);
       throw error;

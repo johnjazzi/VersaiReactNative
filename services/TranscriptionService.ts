@@ -195,28 +195,16 @@ export class TranscriptionService {
   ): Promise<void> {
     try {
       // Download each model file sequentially
-      for (const modelFile of modelFiles(this._modelName)) {
-        const filePath = Platform.OS === 'ios' ?
-          `${RNFS.DocumentDirectoryPath}/${modelFile.name}` :
-          `${RNFS.DocumentDirectoryPath}/${modelFile.name}`;
-        setLoadingStatus(`Downloading ${modelFile.name} ...`);
+        const modelFile = modelFiles(this._modelName)[0]
+        const filePath = `${RNFS.DocumentDirectoryPath}/${modelFile.name}`
 
-        const downloadResumable = FileSystem.createDownloadResumable(
-          modelFile.modelUrl,
-          filePath,
-          {},
-          (downloadProgress) => {
-            const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
-            onProgress(Math.round(progress * 100));
-            setLoadingStatus(
-              `Downloading ${modelFile.name} ... ${Math.round(progress * 100)}%`,
-            );
-          },
-        );
-
-        await RNFS.downloadFile({
+        const result = await RNFS.downloadFile({
           fromUrl: modelFile.modelUrl,
           toFile: filePath,
+          begin: () => {
+            setLoadingStatus('Downloading model...');
+            onProgress(0);
+          },
           progress: (res) => {
             const progress = (res.bytesWritten / res.contentLength) * 100;
             onProgress(Math.round(progress));
@@ -226,21 +214,27 @@ export class TranscriptionService {
           }
         }).promise;
 
-        const result = await downloadResumable.downloadAsync();
-        if (!result?.uri) {
-          throw new Error(`Download failed for ${modelFile.name}`);
+        if (result.statusCode === 200) {
+          setLoadingStatus('Model downloaded successfully!');
+          onProgress(100);
+        } else {
+          console.error(
+            `Download failed with status: ${result.statusCode}`,
+          );
+          throw new Error(`Download failed with status: ${result.statusCode}`);
         }
+
         if (modelFile.name.endsWith(".zip") && Platform.OS === "ios") {
           onProgress(98)
           setLoadingStatus("Extracting model files...");
           await unzip(filePath, RNFS.DocumentDirectoryPath || "");
           console.log("Model files extracted successfully");
         }
-      }
 
-      setLoadingStatus("Models downloaded successfully!");
-      // Initialize after download
-      await this.initialize(setLoadingStatus, onProgress);
+        setLoadingStatus("Models downloaded successfully!");
+        // Initialize after download
+        await this.initialize(setLoadingStatus, onProgress);
+      
     } catch (error: any) {
       console.error("Download error:", error);
       setLoadingStatus("Error downloading model: " + error.message);
@@ -316,8 +310,6 @@ export class TranscriptionService {
 
     subscribe((evt) => {
       const { isCapturing, data, processTime, recordingTime } = evt;
-
-      console.log(evt)
 
       if (data?.result) {
         if (this._isRecording ) {
