@@ -5,6 +5,7 @@ import { initWhisper, WhisperContext, AudioSessionIos } from "whisper.rn";
 import { TranslationServiceState } from "./TranslationService";
 import { useEffect, useState, useRef } from "react";
 import {unzip} from "react-native-zip-archive";
+import RNFS from 'react-native-fs';
 
 
 
@@ -45,16 +46,15 @@ const modelFiles = (modelName: string) => [
 ];
 
 export class TranscriptionService {
-  private _modelName: string = "ggml-small";
+
+  private _modelName: string = "ggml-tiny";
   private _exists: boolean = false;
-  private _modelPath: string = "";
   private _modelSize: number = 0;
   private _isInitialized: boolean = false;
   private context: WhisperContext | null = null;
   private _transcriptionResult: string = "";
   private _stopRecording: (() => void) | null = null;
   private _isRecording: boolean = false;
-  private _isCapturing: boolean = false;
   private _recordingLanguage: string = "en";
   private listeners: Set<(state: TranscriptionServiceState) => void> =
     new Set();
@@ -73,51 +73,65 @@ export class TranscriptionService {
       if (this._modelName != "ggml-tiny") {
         throw new Error("bundled model not selected");
       }
-      const model = require(`../assets/models/ggml-tiny.bin`)
-      const model_ml_weight = require(`../assets/models/ggml-tiny-encoder.mlmodelc/weights/weight.bin`)
-      const model_ml_model = require(`../assets/models/ggml-tiny-encoder.mlmodelc/model.mil`)
-      const model_ml_coremldata = require(`../assets/models/ggml-tiny-encoder.mlmodelc/coremldata.bin`)
-      console.log('models found from bundled assets')
-      return {
-        exists: true, 
-        model: model, 
-        model_ml_weight: model_ml_weight, 
-        model_ml_model: model_ml_model, 
-        model_ml_coremldata: model_ml_coremldata
-      }
-    } catch (error) {
-      // First fallback attempt
-        console.log('models found from bundled assets, trying to find in documents')
-      try {
-        const modelInfo = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${this._modelName}.bin`);
-        const model_ml_weight = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${this._modelName}-encoder.mlmodelc/weights/weight.bin`);
-        const model_ml_model = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${this._modelName}-encoder.mlmodelc/model.mil`);
-        const model_ml_coremldata = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${this._modelName}-encoder.mlmodelc/coremldata.bin`);
 
-        if (!modelInfo.exists || !model_ml_weight.exists || !model_ml_model.exists || !model_ml_coremldata.exists) {
+      // Just use require directly for bundled assets
+      const model = require(`../assets/models/ggml-tiny.bin`);
+      const model_ml_weight = require(`../assets/models/ggml-tiny-encoder.mlmodelc/weights/weight.bin`);
+      const model_ml_model = require(`../assets/models/ggml-tiny-encoder.mlmodelc/model.mil`);
+      const model_ml_coremldata = require(`../assets/models/ggml-tiny-encoder.mlmodelc/coremldata.bin`);
+
+      console.log('Models loaded from bundled assets');
+      return {
+        exists: true,
+        model,
+        model_ml_weight,
+        model_ml_model,
+        model_ml_coremldata
+      };
+    } catch (error) {
+      console.log('Models not found in bundle, trying FileSystem');
+      try {
+        const basePath = Platform.OS === 'ios' ? 
+        `${RNFS.DocumentDirectoryPath}/` : 
+        `${RNFS.DocumentDirectoryPath}/`;
+        const modelPath = `${basePath}${this._modelName}.bin`;
+        const weightPath = `${basePath}${this._modelName}-encoder.mlmodelc/weights/weight.bin`;
+        const modelMlPath = `${basePath}${this._modelName}-encoder.mlmodelc/model.mil`;
+        const coremlPath = `${basePath}${this._modelName}-encoder.mlmodelc/coremldata.bin`;
+
+        // For FileSystem, just return the URIs
+        const [modelExists, weightExists, modelMlExists, coremlExists] = await Promise.all([
+          RNFS.exists(modelPath),
+          RNFS.exists(weightPath),
+          RNFS.exists(modelMlPath),
+          RNFS.exists(coremlPath)
+        ]);
+
+        if (!modelExists || !weightExists || !modelMlExists || !coremlExists) {
           throw new Error("Model files not found");
         }
 
         return {
-          exists: true, 
-          model: modelInfo.uri, 
-          model_ml_weight: model_ml_weight.uri, 
-          model_ml_model: model_ml_model.uri, 
-          model_ml_coremldata: model_ml_coremldata.uri
-        }
+          exists: true,
+          model: modelPath,
+          model_ml_weight: weightPath,
+          model_ml_model: modelMlPath,
+          model_ml_coremldata: coremlPath
+        };
+
       } catch (secondError) {
-        // Last resort fallback
-        console.error("Error No model found please download the model", secondError);
+        console.error("Error: No model found, please download the model", secondError);
         return {
-          exists: false, 
-          model: null, 
-          model_ml_weight: null, 
-          model_ml_model: null, 
+          exists: false,
+          model: null,
+          model_ml_weight: null,
+          model_ml_model: null,
           model_ml_coremldata: null
-        }
+        };
       }
     }
   }
+
 
   async initialize(
     setLoadingStatus?: (status: string) => void,
@@ -182,7 +196,9 @@ export class TranscriptionService {
     try {
       // Download each model file sequentially
       for (const modelFile of modelFiles(this._modelName)) {
-        const filePath = `${FileSystem.documentDirectory}${modelFile.name}`;
+        const filePath = Platform.OS === 'ios' ?
+          `${RNFS.DocumentDirectoryPath}/${modelFile.name}` :
+          `${RNFS.DocumentDirectoryPath}/${modelFile.name}`;
         setLoadingStatus(`Downloading ${modelFile.name} ...`);
 
         const downloadResumable = FileSystem.createDownloadResumable(
@@ -198,24 +214,31 @@ export class TranscriptionService {
           },
         );
 
+        await RNFS.downloadFile({
+          fromUrl: modelFile.modelUrl,
+          toFile: filePath,
+          progress: (res) => {
+            const progress = (res.bytesWritten / res.contentLength) * 100;
+            onProgress(Math.round(progress));
+            setLoadingStatus(
+              `Downloading ${modelFile.name} ... ${Math.round(progress)}%`
+            );
+          }
+        }).promise;
+
         const result = await downloadResumable.downloadAsync();
         if (!result?.uri) {
           throw new Error(`Download failed for ${modelFile.name}`);
         }
-        console.log(modelFile)
         if (modelFile.name.endsWith(".zip") && Platform.OS === "ios") {
-          console.log(result?.uri)
           onProgress(98)
           setLoadingStatus("Extracting model files...");
-          await unzip(result?.uri, FileSystem.documentDirectory || "");
+          await unzip(filePath, RNFS.DocumentDirectoryPath || "");
           console.log("Model files extracted successfully");
         }
       }
 
-      // Set the model path to the main model file
-      this._modelPath = `${FileSystem.documentDirectory}${this._modelName}`;
       setLoadingStatus("Models downloaded successfully!");
-
       // Initialize after download
       await this.initialize(setLoadingStatus, onProgress);
     } catch (error: any) {
@@ -230,7 +253,7 @@ export class TranscriptionService {
       setLoadingStatus("Deleting models...");
 
       // Delete main model file
-      const mainModelPath = `${FileSystem.documentDirectory}${this._modelName}.bin`;
+      const mainModelPath = `${RNFS.DocumentDirectoryPath}${this._modelName}.bin`;
       const mainModelInfo = await FileSystem.getInfoAsync(mainModelPath);
       if (mainModelInfo.exists) {
         await FileSystem.deleteAsync(mainModelPath);
@@ -273,9 +296,9 @@ export class TranscriptionService {
     const { stop, subscribe } = await this.context.transcribeRealtime({
       language: language,
       realtimeAudioMinSec: 1.0,
-      maxThreads: 4,
+      maxThreads: 7,
       useVad: true,
-      maxLen: 16,
+      maxLen: 4,
       realtimeAudioSec: 60,
       realtimeAudioSliceSec: 25,
       audioSessionOnStartIos: {
@@ -293,23 +316,14 @@ export class TranscriptionService {
 
     subscribe((evt) => {
       const { isCapturing, data, processTime, recordingTime } = evt;
-      this._isCapturing = isCapturing;
+
+      console.log(evt)
 
       if (data?.result) {
-        if (this._isRecording ) {this._transcriptionResult = data.result;}
-        // console.log(
-        //   `Result: ${data?.segments
-        //     .map(
-        //       (segment) =>
-        //         `[${segment.t0} --> ${segment.t1}]  ${segment.text}`,
-        //     )
-        //     .join('\n')}` +
-        //   `Process time: ${processTime}ms\n` +
-        //   `Recording time: ${recordingTime}ms` 
-        // )
-        
-        //console.log(isCapturing, data, processTime, recordingTime)
-        this.notifyListeners();
+        if (this._isRecording ) {
+          this._transcriptionResult = data.result;
+          this.notifyListeners();
+        }
       }
 
       if (!isCapturing) {

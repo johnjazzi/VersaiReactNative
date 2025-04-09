@@ -8,6 +8,7 @@ import { initWhisper, WhisperContext, AudioSessionIos } from 'whisper.rn';
 import { useEffect, useState, useRef } from 'react';
 import React from 'react';
 
+
 // Conditionally import expo-device
 let Device: any = null;
 try {
@@ -71,7 +72,6 @@ export function Main() {
 
   // Helper function to get the target language based on recording language
   const getTargetLanguage = (sourceLanguage: string): string => {
-    console.log(sourceLanguage, languageOne, languageTwo)
     return sourceLanguage === languageOne ? languageTwo : languageOne;
   };
 
@@ -181,7 +181,7 @@ export function Main() {
   };
 
   const renderSettings = () => (
-    <View style={styles.settingsContainer}>
+    <View >
       <Text style={styles.settingsTitle}>Text Size</Text>
       <View style={styles.textSizeControls}>
         <TouchableOpacity 
@@ -350,6 +350,7 @@ export function Main() {
       </View>
     ) : (
       <View style={styles.settingsContainer}>
+                {renderSettings()}
         <View style={styles.settingRow}>
           <Text style={styles.settingLabel}>Translation Provider</Text>
           <View style={styles.radioContainer}>
@@ -446,7 +447,6 @@ export function Main() {
           )}
         </View>
 
-        {renderSettings()}
       </View>
     )}
 
@@ -477,7 +477,6 @@ export function Main() {
               title={lang.label}
               onPress={() => {
                 setLanguageOne(lang.value);
-                console.log('Setting language to:', lang.value);
                 setShowSourceModal(false);
               }}
             />
@@ -501,7 +500,6 @@ export function Main() {
               title={lang.label}
               onPress={() => {
                 setLanguageTwo(lang.value);
-                console.log(languageTwo)
                 setShowTargetModal(false);
               }}
             />
