@@ -71,6 +71,7 @@ export function Main() {
 
   // Helper function to get the target language based on recording language
   const getTargetLanguage = (sourceLanguage: string): string => {
+    console.log(sourceLanguage, languageOne, languageTwo)
     return sourceLanguage === languageOne ? languageTwo : languageOne;
   };
 
@@ -112,7 +113,7 @@ export function Main() {
 
     if (!transcriptionResult) return;
 
-    if (transcriptionResult === '') {
+    if (transcriptionResult === '' || transcriptionResult === '...') {
         setTranslatedTranscript('');
       }
 
@@ -128,8 +129,7 @@ export function Main() {
   useEffect( () => {
     // Register the callback when component mounts
     transcriptionService.setOnTranscriptionCompleteCallback( async (finalText, language) => {
-
-      if (!finalText.trim()) return;
+      if (!finalText.trim() || finalText === '...') return;
 
       const sourceLanguageName = getLanguageDisplayName(language);
       const targetLanguage = getTargetLanguage(language);
@@ -148,7 +148,7 @@ export function Main() {
     return () => {
       transcriptionService.setOnTranscriptionCompleteCallback(null);
     };
-  }, []);
+  }, [languageOne, languageTwo]);
 
 
   const switchSpeaker = async () => {
@@ -156,11 +156,11 @@ export function Main() {
       const newLanguage = recordingLanguage === languageOne ? languageTwo : languageOne;
       setRecordingLanguage(newLanguage);
       transcriptionService.stopTranscription();
- //     await new Promise(resolve => setTimeout(resolve, 50));
+      await new Promise(resolve => setTimeout(resolve, 150));
       transcriptionService.startTranscription(newLanguage);
+      return;
     }
   };
-
 
 
   // Clean up interval on component unmount
@@ -172,15 +172,6 @@ export function Main() {
     };
   }, []);
 
-
-  const deleteModel = async () => {
-    try {
-      await translationService.deleteModel(setLoadingStatus);
-
-    } catch (error) {
-      console.error('Error deleting model:', error);
-    }
-  };
 
   const toggleExpanded = (index: number) => {
     setExpandedItems(prev => ({
@@ -410,7 +401,7 @@ export function Main() {
               <Text style={styles.modelText}>Size: {(translationModelSize / (1000000000)).toFixed(2)} GB</Text>
               <Button 
                 title="Delete Model" 
-                onPress={deleteModel}
+                onPress={() => translationService.deleteModel(setLoadingStatus)}
                 color="red"
               />
             </View>
@@ -437,7 +428,7 @@ export function Main() {
               <Text style={styles.modelText}>Size: {(transcriptionModelSize / (1000000000)).toFixed(2)} GB</Text>
               <Button 
                 title="Delete Model" 
-                onPress={deleteModel}
+                onPress={() => transcriptionService.deleteModel(setLoadingStatus)}
                 color="red"
               />
             </View>
@@ -486,6 +477,7 @@ export function Main() {
               title={lang.label}
               onPress={() => {
                 setLanguageOne(lang.value);
+                console.log('Setting language to:', lang.value);
                 setShowSourceModal(false);
               }}
             />
@@ -509,6 +501,7 @@ export function Main() {
               title={lang.label}
               onPress={() => {
                 setLanguageTwo(lang.value);
+                console.log(languageTwo)
                 setShowTargetModal(false);
               }}
             />

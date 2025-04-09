@@ -42,21 +42,6 @@ cd VersaiReactNative
 # Install dependencies
 yarn install
 
-# Generate the whisper models (if needed)
-cd whisper.cpp
-python3.10 -m venv venv
-source venv/bin/activate
-pip install "numpy<2"
-pip install ane_transformers
-pip install torch==2.1.0
-pip install openai-whisper
-pip install coremltools
-
-# Convert models
-sh ./models/download-ggml-model.sh base
-./models/generate-coreml-model.sh base
-```
-
 ### Running on Device (Dev Mode)
 
 ```bash

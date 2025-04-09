@@ -4,16 +4,9 @@ import { LANGUAGE_MAP, LanguageMapping } from "./Common";
 import { initWhisper, WhisperContext, AudioSessionIos } from "whisper.rn";
 import { TranslationServiceState } from "./TranslationService";
 import { useEffect, useState, useRef } from "react";
+import {unzip} from "react-native-zip-archive";
 
-// Safe import approach that doesn't cause NativeEventEmitter issues
-let ZipArchive: any = null;
-if (Platform.OS === "ios") {
-  try {
-    ZipArchive = require("react-native-zip-archive");
-  } catch (e) {
-    console.warn("react-native-zip-archive module not available");
-  }
-}
+
 
 export interface TranscriptionServiceState {
   modelExists: boolean;
@@ -38,22 +31,21 @@ export function useTranscriptionService() {
   return state;
 }
 
-const modelFiles = [
+const modelFiles = (modelName: string) => [
   {
-    name: "ggml-tiny.bin",
+    name: `${modelName}.bin`,
     modelUrl:
-      "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin",
+      `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${modelName}.bin`,
   },
   {
-    name: "ggml-tiny-encoder.mlmodelc.zip",
+    name: `${modelName}.mlmodelc.zip`,
     modelUrl:
-      "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-encoder.mlmodelc.zip",
+      `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${modelName}-encoder.mlmodelc.zip`,
   },
 ];
 
 export class TranscriptionService {
-  private _modelName: string = "ggml-tiny.bin";
-  private _modelUrl: string = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${this._modelName}`;
+  private _modelName: string = "ggml-small";
   private _exists: boolean = false;
   private _modelPath: string = "";
   private _modelSize: number = 0;
@@ -78,11 +70,14 @@ export class TranscriptionService {
 
   async checkIfbundledModelExists() {
     try {
-      const model = require('../assets/models/ggml-tiny.bin')
-      const model_ml_weight = require('../assets/models/ggml-tiny-encoder.mlmodelc/weights/weight.bin')
-      const model_ml_model = require('../assets/models/ggml-tiny-encoder.mlmodelc/model.mil')
-      const model_ml_coremldata = require('../assets/models/ggml-tiny-encoder.mlmodelc/coremldata.bin')
-      console.log('models found')
+      if (this._modelName != "ggml-tiny") {
+        throw new Error("bundled model not selected");
+      }
+      const model = require(`../assets/models/ggml-tiny.bin`)
+      const model_ml_weight = require(`../assets/models/ggml-tiny-encoder.mlmodelc/weights/weight.bin`)
+      const model_ml_model = require(`../assets/models/ggml-tiny-encoder.mlmodelc/model.mil`)
+      const model_ml_coremldata = require(`../assets/models/ggml-tiny-encoder.mlmodelc/coremldata.bin`)
+      console.log('models found from bundled assets')
       return {
         exists: true, 
         model: model, 
@@ -92,11 +87,12 @@ export class TranscriptionService {
       }
     } catch (error) {
       // First fallback attempt
+        console.log('models found from bundled assets, trying to find in documents')
       try {
-        const modelInfo = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${this._modelName}`);
-        const model_ml_weight = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${this._modelName.replace(".bin", "-encoder.mlmodelc/weights/weight.bin")}`);
-        const model_ml_model = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${this._modelName.replace(".bin", "-encoder.mlmodelc/model.mil")}`);
-        const model_ml_coremldata = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${this._modelName.replace(".bin", "-encoder.mlmodelc/coremldata.bin")}`);
+        const modelInfo = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${this._modelName}.bin`);
+        const model_ml_weight = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${this._modelName}-encoder.mlmodelc/weights/weight.bin`);
+        const model_ml_model = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${this._modelName}-encoder.mlmodelc/model.mil`);
+        const model_ml_coremldata = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}${this._modelName}-encoder.mlmodelc/coremldata.bin`);
 
         if (!modelInfo.exists || !model_ml_weight.exists || !model_ml_model.exists || !model_ml_coremldata.exists) {
           throw new Error("Model files not found");
@@ -146,7 +142,7 @@ export class TranscriptionService {
         coreMLModelAsset:
           Platform.OS === "ios"
             ? {
-                filename: 'ggml-tiny.en-encoder.mlmodelc',
+                filename: `${this._modelName}-encoder.mlmodelc`,
                 assets: [
                   model_ml_weight,
                   model_ml_model,
@@ -161,14 +157,11 @@ export class TranscriptionService {
       setLoadingProgress?.(80);
 
       console.log("warming transcription context");
-      await new Promise(resolve => setTimeout(resolve, 100)); 
-      // const silentWav =
-      //   "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
-      // const { stop, promise }  = await this.context.transcribe(silentWav , {
-      //   maxLen: 1,
-      //   tokenTimestamps: true,
-      // })
-      //const { result, segments } = await promise
+      // const { stop, promise } = await this.context.transcribe(require("../assets/warmer.m4a"), {
+      //   language: "en",
+      // });
+      // const { result, segments } = await promise
+      // console.log(result)
       console.log("transcription context warmed up");
 
       setLoadingProgress?.(100);
@@ -188,55 +181,34 @@ export class TranscriptionService {
   ): Promise<void> {
     try {
       // Download each model file sequentially
-      for (const modelFile of modelFiles) {
+      for (const modelFile of modelFiles(this._modelName)) {
         const filePath = `${FileSystem.documentDirectory}${modelFile.name}`;
-        setLoadingStatus(`Downloading ${modelFile.name}...`);
+        setLoadingStatus(`Downloading ${modelFile.name} ...`);
 
         const downloadResumable = FileSystem.createDownloadResumable(
           modelFile.modelUrl,
           filePath,
           {},
           (downloadProgress) => {
-            const progress =
-              downloadProgress.totalBytesWritten /
-              downloadProgress.totalBytesExpectedToWrite;
+            const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
             onProgress(Math.round(progress * 100));
             setLoadingStatus(
-              `Downloading ${modelFile.name}... ${Math.round(progress * 100)}%`,
+              `Downloading ${modelFile.name} ... ${Math.round(progress * 100)}%`,
             );
           },
         );
 
         const result = await downloadResumable.downloadAsync();
-        if (!result?.uri)
+        if (!result?.uri) {
           throw new Error(`Download failed for ${modelFile.name}`);
-
-        // Handle zip files - for iOS we need to handle the Core ML models
+        }
+        console.log(modelFile)
         if (modelFile.name.endsWith(".zip") && Platform.OS === "ios") {
+          console.log(result?.uri)
+          onProgress(98)
           setLoadingStatus("Extracting model files...");
-          const extractDir = FileSystem.documentDirectory || "";
-
-          try {
-            // Check if ZipArchive is available
-            if (ZipArchive && ZipArchive.unzip) {
-              // Unzip the file
-              await ZipArchive.unzip(filePath, extractDir);
-
-              // Remove the zip file after extraction
-              await FileSystem.deleteAsync(filePath);
-
-              setLoadingStatus("Model files extracted successfully");
-            } else {
-              setLoadingStatus(
-                "Zip extraction not available on this device. You may need to manually extract the files.",
-              );
-            }
-          } catch (error) {
-            console.error("Extraction error:", error);
-            setLoadingStatus(
-              "Error extracting zip file. iOS Core ML model may not be available.",
-            );
-          }
+          await unzip(result?.uri, FileSystem.documentDirectory || "");
+          console.log("Model files extracted successfully");
         }
       }
 
@@ -258,7 +230,7 @@ export class TranscriptionService {
       setLoadingStatus("Deleting models...");
 
       // Delete main model file
-      const mainModelPath = `${FileSystem.documentDirectory}${this._modelName}`;
+      const mainModelPath = `${FileSystem.documentDirectory}${this._modelName}.bin`;
       const mainModelInfo = await FileSystem.getInfoAsync(mainModelPath);
       if (mainModelInfo.exists) {
         await FileSystem.deleteAsync(mainModelPath);
@@ -266,7 +238,7 @@ export class TranscriptionService {
 
       // Delete Core ML model directory if on iOS
       if (Platform.OS === "ios") {
-        const coreMLDirPath = `${FileSystem.documentDirectory}${this._modelName.replace(".bin", "-encoder.mlmodelc")}`;
+        const coreMLDirPath = `${FileSystem.documentDirectory}${this._modelName}-encoder.mlmodelc`;
         const coreMLDirInfo = await FileSystem.getInfoAsync(coreMLDirPath);
         if (coreMLDirInfo.exists && coreMLDirInfo.isDirectory) {
           await FileSystem.deleteAsync(coreMLDirPath, { idempotent: true });
@@ -296,14 +268,13 @@ export class TranscriptionService {
 
     this._isRecording = true;
     this._recordingLanguage = language;
-    this._transcriptionResult = "";
     this.notifyListeners();
 
     const { stop, subscribe } = await this.context.transcribeRealtime({
       language: language,
       realtimeAudioMinSec: 1.0,
       maxThreads: 4,
-      //useVad: true,
+      useVad: true,
       maxLen: 16,
       realtimeAudioSec: 60,
       realtimeAudioSliceSec: 25,
@@ -343,7 +314,8 @@ export class TranscriptionService {
 
       if (!isCapturing) {
         this._isRecording = false;
-        this._transcriptionResult = ""
+        
+        //this._transcriptionResult = ""
         console.log("Finished realtime transcribing");
         this.notifyListeners();
       }

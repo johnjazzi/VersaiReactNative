@@ -9,7 +9,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -21,11 +21,12 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.VersaiReactNative",
+      "bundleIdentifier": "com.versai.VersaiReactNative",
+      "buildNumber": "1.0.0",
       "developmentTeam": "johnjazzinaro@gmail.com",
       "icon": "./assets/icon.png",
       "splash": {
-        "image": "./assets/splash-icon.png",
+        "image": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
       "infoPlist": {
@@ -38,7 +39,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.anonymous.VersaiReactNative",

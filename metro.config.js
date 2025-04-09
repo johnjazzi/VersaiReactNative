@@ -13,6 +13,7 @@ config.resolver.assetExts.push(
   'mil', // whisper.rn: CoreML model asset
   'gguf', // llama.rn: ggml model binary
   'mlmodelc',
+  'm4a'
 );
 
 // Fix for module resolution
