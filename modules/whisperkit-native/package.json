@@ -1,0 +1,13 @@
+{
+  "name": "whisperkit-native",
+  "version": "0.1.0",
+  "description": "React Native binding for WhisperKit on iOS",
+  "main": "index.js",
+  "homepage": "https://github.com/yourusername/whisperkit-native",
+  "license": "MIT",
+  "author": "Your Name",
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+} 

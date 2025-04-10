@@ -44,6 +44,9 @@ target 'VersaiReactNative' do
     :privacy_file_aggregation_enabled => podfile_properties['apple.privacyManifestAggregationEnabled'] != 'false',
   )
 
+  # Added by whisperkit-native install script
+  pod 'whisperkit-native', :path => '../modules/whisperkit-native'
+
   post_install do |installer|
     react_native_post_install(
       installer,
