@@ -170,13 +170,18 @@ export class TranscriptionService {
 
       setLoadingProgress?.(80);
 
-      console.log("warming transcription context");
-      // const { stop, promise } = await this.context.transcribe(require("../assets/warmer.m4a"), {
-      //   language: "en",
+      // console.log("warming transcription context");
+      // await new Promise((resolve) => setTimeout(resolve, 500));
+      // const { stop, promise } = this.context.transcribe(
+      //     require("../assets/jfk.wav"), {
+      //     maxLen: 4,
+      //     language: "en",
+      //     maxThreads: 12,
+      //     beamSize: 1,
       // });
       // const { result, segments } = await promise
       // console.log(result)
-      console.log("transcription context warmed up");
+      // console.log("transcription context warmed up");
 
       setLoadingProgress?.(100);
       setLoadingStatus?.("Ready!");

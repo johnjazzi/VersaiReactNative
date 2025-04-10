@@ -31,9 +31,10 @@
       },
       "infoPlist": {
         "NSMicrophoneUsageDescription": "This app needs access to the microphone to record audio.",
-        "NSSpeechRecognitionUsageDescription": "This app needs access to speech recognition to translate text" ,
+        "NSSpeechRecognitionUsageDescription": "This app needs access to speech recognition to translate text",
         "UIFileSharingEnabled": true,
-        "LSSupportsOpeningDocumentsInPlace": true
+        "LSSupportsOpeningDocumentsInPlace": true,
+        "ITSAppUsesNonExemptEncryption": false
       },
       "deploymentTarget": "16.0"
     },

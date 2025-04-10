@@ -387,7 +387,7 @@ export function Main() {
                 translationMode === 'llm' ? styles.radioTextSelected : styles.radioText,
                 !translationModelExists && styles.radioTextDisabled
               ]}>
-                LLM
+                LLM (experimental)
               </Text>
             </TouchableOpacity>
           </View>

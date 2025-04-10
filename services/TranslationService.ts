@@ -54,6 +54,8 @@ export class TranslationService {
   private _iosTranslateContext: any | null = null;
   private _isRealDevice: boolean = Device?.isDevice || false;
   private _translationMode: 'cloud' | 'ios' | 'llm' = Device?.isDevice ? 'ios' : 'cloud';
+  private _setLoadingStatus: (status: string) => void = () => {};
+  private _setLoadingProgress: (progress: number) => void = () => {};
   private context: LlamaContext | null = null;
   private settings: TranslationSettings = {
     useCloudTranslation: true,
@@ -73,7 +75,7 @@ export class TranslationService {
     switch (mode) {
       case 'llm':
         if (this._exists === true && this._isInitialized === false) {
-          await this.initializeLLM();
+          await this.initializeLLM(this._setLoadingStatus, this._setLoadingProgress);
         }
         break;
       case 'ios':
@@ -171,6 +173,9 @@ export class TranslationService {
     setLoadingStatus?: (status: string) => void , 
     setLoadingProgress?: (progress: number) => void) {
     try {
+
+      this._setLoadingStatus = setLoadingStatus || (() => {});
+      this._setLoadingProgress = setLoadingProgress || (() => {});
 
       console.log('Initializing translation model...');
       setLoadingProgress?.(10);
@@ -285,7 +290,9 @@ export class TranslationService {
     try {
       const systemPrompt = `
       you are a translation assistant, you will be given a text and you will need to translate it from one language to another.
-      you will need to return the translated text and nothing else.
+      you will need to read the text, translate it to preserve the original meaning and return the translated text, do not return anything else. 
+      Sometimes the text will be incomplete, you need to do your best to predict the rest and translate it.
+      You cannot refuse to translate you must either return a tranlation or return nothing
       `
       const prompt = `
       <${LANGUAGE_MAP[sourceLang as keyof LanguageMapping]}> "${text}" <${LANGUAGE_MAP[targetLang as keyof LanguageMapping]}>
