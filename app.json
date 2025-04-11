@@ -54,6 +54,12 @@
     },
     "plugins": [
       [
+        "expo-av",
+        {
+          "microphonePermission": "Allow VersAI to access your microphone."
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "ios": {

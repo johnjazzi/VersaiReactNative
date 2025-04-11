@@ -1,6 +1,6 @@
 # Versai Translate
 
-![Versai Translate Logo](https://raw.githubusercontent.com/username/VersaiReactNative/main/assets/icon.png)
+![Versai Translate Logo](https://raw.githubusercontent.com/johnjazzi/VersaiReactNative/5b5dfe5cab7d1a6b73fd1d955cdc8ac3441ef6d4/assets/icon.png)
 
 ## Offline Translation for Everyone
 
@@ -45,20 +45,21 @@ yarn install
 ### Running on Device (Dev Mode)
 
 ```bash
-npx expo prebuild --clean
-npx expo run:ios --device
+yarn prebuild --clean
+yarn pod-install
+yarn ios --device
 ```
 
 ### Running on Device (Release Mode)
 
 ```bash
-npx expo prebuild --clean
-npx expo run:ios --device --configuration Release
+yarn prebuild --clean
+yarn run:ios --device --configuration Release
 ```
 
 You may need to run in tunnel mode:
 ```bash
-npx expo start --tunnel
+yarn start --tunnel
 ```
 
 ## Contributing

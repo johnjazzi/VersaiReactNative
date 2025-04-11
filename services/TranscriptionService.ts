@@ -6,7 +6,7 @@ import { TranslationServiceState } from "./TranslationService";
 import { useEffect, useState, useRef } from "react";
 import {unzip} from "react-native-zip-archive";
 import RNFS from 'react-native-fs';
-
+import { Audio } from "expo-av";
 
 
 export interface TranscriptionServiceState {
@@ -149,8 +149,8 @@ export class TranscriptionService {
       setLoadingProgress?.(10);
 
       this.context = await initWhisper({
-        useFlashAttn: true,
-        useGpu: true,
+        // useFlashAttn: true,
+        // useGpu: true,
         useCoreMLIos: false,
         filePath: model,
         coreMLModelAsset:
@@ -288,35 +288,38 @@ export class TranscriptionService {
 
     if (this._isRecording) return;
 
+    await Audio.requestPermissionsAsync();
+
     this._isRecording = true;
     this._recordingLanguage = language;
     this.notifyListeners();
 
+    await AudioSessionIos.setCategory(
+      AudioSessionIos.Category.PlayAndRecord, [AudioSessionIos.CategoryOption.MixWithOthers],
+    )
+    await AudioSessionIos.setMode(AudioSessionIos.Mode.Default)
+    await AudioSessionIos.setActive(true)
+
+
     const { stop, subscribe } = await this.context.transcribeRealtime({
       language: language,
-      realtimeAudioMinSec: 1.0,
-      maxThreads: 7,
+      maxThreads: 12,
       useVad: true,
-      maxLen: 4,
-      realtimeAudioSec: 60,
-      realtimeAudioSliceSec: 25,
-      audioSessionOnStartIos: {
-        category: AudioSessionIos.Category.PlayAndRecord,
-        options: [
-          AudioSessionIos.CategoryOption.MixWithOthers,
-          AudioSessionIos.CategoryOption.AllowBluetooth,
-        ],
-        mode: AudioSessionIos.Mode.Default,
-      },
-      audioSessionOnStopIos: "restore",
+      maxLen: 1,
+      realtimeAudioSec: 35,
+      realtimeAudioSliceSec: 5
     });
 
     this._stopRecording = stop;
 
     subscribe((evt) => {
-      const { isCapturing, data, processTime, recordingTime } = evt;
+      const { isCapturing, data, processTime, recordingTime, error, code } = evt;
+
 
       if (data?.result) {
+
+        console.log("data.result", data);
+
         if (this._isRecording ) {
           this._transcriptionResult = data.result;
           this.notifyListeners();
