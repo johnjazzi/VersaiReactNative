@@ -149,43 +149,30 @@ export class TranscriptionService {
       setLoadingProgress?.(10);
 
       this.context = await initWhisper({
-        // useFlashAttn: true,
-        // useGpu: true,
+        useFlashAttn: true,
+        useGpu: true,
         useCoreMLIos: false,
         filePath: model,
-        coreMLModelAsset:
-          Platform.OS === "ios"
-            ? {
-                filename: `${this._modelName}-encoder.mlmodelc`,
-                assets: [
-                  model_ml_weight,
-                  model_ml_model,
-                  model_ml_coremldata
-                ],
-              }
-            : undefined,
+        // coreMLModelAsset:
+        //   Platform.OS === "ios"
+        //     ? {
+        //         filename: `${this._modelName}-encoder.mlmodelc`,
+        //         assets: [
+        //           model_ml_weight,
+        //           model_ml_model,
+        //           model_ml_coremldata
+        //         ],
+        //       }
+        //     : undefined,
       });
 
       console.log("Whisper context initialized");
-
-      setLoadingProgress?.(80);
-
-      // console.log("warming transcription context");
-      // await new Promise((resolve) => setTimeout(resolve, 500));
-      // const { stop, promise } = this.context.transcribe(
-      //     require("../assets/jfk.wav"), {
-      //     maxLen: 4,
-      //     language: "en",
-      //     maxThreads: 12,
-      //     beamSize: 1,
-      // });
-      // const { result, segments } = await promise
-      // console.log(result)
-      // console.log("transcription context warmed up");
-
       setLoadingProgress?.(100);
       setLoadingStatus?.("Ready!");
 
+      const result = await this.context?.transcribe(require('../assets/jfk.wav'))
+      console.log(result)
+      
       this._isInitialized = true;
       this.notifyListeners();
     } catch (error: any) {
@@ -293,21 +280,25 @@ export class TranscriptionService {
     this._isRecording = true;
     this._recordingLanguage = language;
     this.notifyListeners();
-
-    await AudioSessionIos.setCategory(
-      AudioSessionIos.Category.PlayAndRecord, [AudioSessionIos.CategoryOption.MixWithOthers],
-    )
-    await AudioSessionIos.setMode(AudioSessionIos.Mode.Default)
-    await AudioSessionIos.setActive(true)
-
+    console.log('Starting transcription with language:', language);
 
     const { stop, subscribe } = await this.context.transcribeRealtime({
       language: language,
-      maxThreads: 12,
+      maxThreads: 6,
       useVad: true,
-      maxLen: 1,
-      realtimeAudioSec: 35,
-      realtimeAudioSliceSec: 5
+      maxLen: 16,
+      realtimeAudioMinSec: 1.0,
+      realtimeAudioSliceSec: 15,
+      realtimeAudioSec: 60,
+      audioSessionOnStartIos: {
+        category: AudioSessionIos.Category.PlayAndRecord,
+        options: [
+          AudioSessionIos.CategoryOption.MixWithOthers,
+          AudioSessionIos.CategoryOption.AllowBluetooth,
+        ],
+        mode: AudioSessionIos.Mode.Default,
+      },
+      audioSessionOnStopIos: "restore",
     });
 
     this._stopRecording = stop;
@@ -315,21 +306,23 @@ export class TranscriptionService {
     subscribe((evt) => {
       const { isCapturing, data, processTime, recordingTime, error, code } = evt;
 
+      console.log(processTime, recordingTime)
+      
+      if (error) {
+        console.error("Transcription error:", error, code);
+        return;
+      }
 
       if (data?.result) {
-
-        console.log("data.result", data);
-
-        if (this._isRecording ) {
+        // Only update if there's a meaningful change to reduce UI updates
+        if (this._isRecording && data.result !== this._transcriptionResult) {
           this._transcriptionResult = data.result;
           this.notifyListeners();
         }
       }
 
-      if (!isCapturing) {
+      if (!isCapturing && this._isRecording) {
         this._isRecording = false;
-        
-        //this._transcriptionResult = ""
         console.log("Finished realtime transcribing");
         this.notifyListeners();
       }

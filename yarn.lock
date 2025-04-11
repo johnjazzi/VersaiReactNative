@@ -6249,6 +6249,9 @@ which@^2.0.1:
   dependencies:
     isexe "^2.0.0"
 
+whisper-turbo@./whisper-turbo:
+  version "0.1.0"
+
 whisper.rn@0.4.0-rc.9:
   version "0.4.0-rc.9"
   resolved "https://registry.npmjs.org/whisper.rn/-/whisper.rn-0.4.0-rc.9.tgz"

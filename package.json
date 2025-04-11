@@ -33,6 +33,7 @@
     "react-native-web": "~0.19.13",
     "react-native-zip-archive": "^7.0.1",
     "web-streams-polyfill": "^4.1.0",
+    "whisper-turbo": "./whisper-turbo",
     "whisper.rn": "0.4.0-rc.9"
   },
   "devDependencies": {

@@ -46,7 +46,8 @@ yarn install
 
 ```bash
 yarn prebuild --clean
-yarn pod-install
+
+
 yarn ios --device
 ```
 

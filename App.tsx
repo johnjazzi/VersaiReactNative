@@ -20,7 +20,8 @@ try {
 
 import { IOSTranslateTasksProvider } from "react-native-ios-translate-tasks";
 
-import { transcriptionService , useTranscriptionService , TranscriptionServiceState } from './services/TranscriptionService';
+//import { transcriptionService , useTranscriptionService , TranscriptionServiceState } from './services/TranscriptionService';
+import { TranscriptionServiceTurbo, useTranscriptionServiceTurbo, TranscriptionServiceTurboState, transcriptionServiceTurbo } from './services/TranscriptionServiceTurbo';
 import { translationService , useTranslationService , TranslationServiceState, useIOSTranslateContext } from './services/TranslationService';
 
 export function Main() {
@@ -68,7 +69,7 @@ export function Main() {
     whisperContext: transcriptionContext,
     isRecording: isRecording,
     transcriptionResult: transcriptionResult
-  } = useTranscriptionService();
+  } = useTranscriptionServiceTurbo();
 
   // Helper function to get the target language based on recording language
   const getTargetLanguage = (sourceLanguage: string): string => {
@@ -95,7 +96,7 @@ export function Main() {
       try {
         console.log('Initializing models...');
 
-        !transcriptionInitialized? await transcriptionService.initialize(setLoadingStatus, setLoadingProgress): null;
+        !transcriptionInitialized? await transcriptionServiceTurbo.initialize(setLoadingStatus, setLoadingProgress): null;
         !translationInitialized? await translationService.initialize(setLoadingStatus, setLoadingProgress): null;
         setIsModelInitialized(true);
       
@@ -128,7 +129,7 @@ export function Main() {
   // save the transcription to the log when recording stops
   useEffect( () => {
     // Register the callback when component mounts
-    transcriptionService.setOnTranscriptionCompleteCallback( async (finalText, language) => {
+    transcriptionServiceTurbo.setOnTranscriptionCompleteCallback( async (finalText, language) => {
       if (!finalText.trim() || finalText === '...') return;
 
       const sourceLanguageName = getLanguageDisplayName(language);
@@ -146,7 +147,7 @@ export function Main() {
     
     // Clean up when component unmounts
     return () => {
-      transcriptionService.setOnTranscriptionCompleteCallback(null);
+      transcriptionServiceTurbo.setOnTranscriptionCompleteCallback(null);
     };
   }, [languageOne, languageTwo]);
 
@@ -155,9 +156,9 @@ export function Main() {
     if (isRecording) {
       const newLanguage = recordingLanguage === languageOne ? languageTwo : languageOne;
       setRecordingLanguage(newLanguage);
-      transcriptionService.stopTranscription();
+      transcriptionServiceTurbo.stopTranscription();
       await new Promise(resolve => setTimeout(resolve, 150));
-      transcriptionService.startTranscription(newLanguage);
+      transcriptionServiceTurbo.startTranscription(newLanguage);
       return;
     }
   };
@@ -272,7 +273,7 @@ export function Main() {
           <View style={styles.row}>
             <Button 
               title="Stop" 
-              onPress={() => transcriptionService.stopTranscription()} 
+              onPress={() => transcriptionServiceTurbo.stopTranscription()} 
               disabled={!isRecording}
             />
             <Button 
@@ -298,7 +299,7 @@ export function Main() {
             <TouchableOpacity 
               onPress={() => {
                 setRecordingLanguage(languageOne);
-                transcriptionService.startTranscription(languageOne)
+                transcriptionServiceTurbo.startTranscription(languageOne)
               }}
               disabled={!transcriptionInitialized || !!isRecording}
               style={[
@@ -331,7 +332,7 @@ export function Main() {
             <TouchableOpacity 
               onPress={() => {
                 setRecordingLanguage(languageTwo);
-                transcriptionService.startTranscription(languageTwo)
+                transcriptionServiceTurbo.startTranscription(languageTwo)
               }}
               disabled={!transcriptionInitialized || !!isRecording}
               style={[
@@ -429,7 +430,7 @@ export function Main() {
               <Text style={styles.modelText}>Size: {(transcriptionModelSize / (1000000000)).toFixed(2)} GB</Text>
               <Button 
                 title="Delete Model" 
-                onPress={() => transcriptionService.deleteModel(setLoadingStatus)}
+                onPress={() => transcriptionServiceTurbo.deleteModel(setLoadingStatus)}
                 color="red"
               />
             </View>
@@ -440,7 +441,7 @@ export function Main() {
               <Text style={styles.modelText}>Size: {(transcriptionModelSize / (1000000000)).toFixed(2)} GB</Text>
               <Button 
                 title="Download Model" 
-                onPress={() => transcriptionService.downloadModel(setLoadingProgress, setLoadingStatus)}
+                onPress={() => transcriptionServiceTurbo.downloadModel(setLoadingProgress, setLoadingStatus)}
                 disabled={transcriptionModelExists}
               />
             </View>

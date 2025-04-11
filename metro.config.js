@@ -1,4 +1,5 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
@@ -6,7 +7,13 @@ const config = getDefaultConfig(__dirname);
 config.resolver.extraNodeModules = {
   ...config.resolver.extraNodeModules,
   'whisper.rn': require.resolve('whisper.rn'),
+  'whisper-turbo': path.resolve(__dirname, './whisper-turbo'),
 };
+
+// Add whisper-turbo to watchFolders to ensure Metro watches changes
+config.watchFolders = [
+  path.resolve(__dirname, './whisper-turbo')
+];
 
 config.resolver.assetExts.push(
   'bin', // whisper.rn: ggml model binary

@@ -1,0 +1,31 @@
+{
+  "name": "whisper-turbo",
+  "version": "0.1.0",
+  "description": "High-performance direct whisper.cpp implementation for React Native using Turbo Modules",
+  "homepage": "https://github.com/yourusername/whisper-turbo",
+  "main": "src/index.js",
+  "files": [
+    "src",
+    "ios",
+    "android",
+    "cpp",
+    "whisper-turbo.podspec"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "react-native",
+    "whisper",
+    "speech-to-text",
+    "transcription",
+    "turbo-module",
+    "whisper.cpp"
+  ],
+  "author": "",
+  "license": "MIT",
+  "peerDependencies": {
+    "react": "*",
+    "react-native": ">=0.65.0"
+  }
+} 
