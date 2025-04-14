@@ -73,7 +73,7 @@ export class TranscriptionService {
       if (this._modelName != "ggml-tiny") {
         throw new Error("bundled model not selected");
       }
-
+      
       // Just use require directly for bundled assets
       const model = require(`../assets/models/ggml-tiny.bin`);
       const model_ml_weight = require(`../assets/models/ggml-tiny-encoder.mlmodelc/weights/weight.bin`);
@@ -132,7 +132,6 @@ export class TranscriptionService {
     }
   }
 
-
   async initialize(
     setLoadingStatus?: (status: string) => void,
     setLoadingProgress?: (progress: number) => void,
@@ -149,8 +148,8 @@ export class TranscriptionService {
       setLoadingProgress?.(10);
 
       this.context = await initWhisper({
-        // useFlashAttn: true,
-        // useGpu: true,
+        useFlashAttn: true,
+        useGpu: true,
         useCoreMLIos: false,
         filePath: model,
         coreMLModelAsset:
@@ -169,15 +168,13 @@ export class TranscriptionService {
       console.log("Whisper context initialized");
 
       setLoadingProgress?.(80);
-
       // console.log("warming transcription context");
       // await new Promise((resolve) => setTimeout(resolve, 500));
       // const { stop, promise } = this.context.transcribe(
       //     require("../assets/jfk.wav"), {
-      //     maxLen: 4,
+      //     maxLen: 1,
       //     language: "en",
-      //     maxThreads: 12,
-      //     beamSize: 1,
+      //     maxThreads: 6,
       // });
       // const { result, segments } = await promise
       // console.log(result)
@@ -292,22 +289,26 @@ export class TranscriptionService {
 
     this._isRecording = true;
     this._recordingLanguage = language;
+    this._transcriptionResult = "";
     this.notifyListeners();
-
-    await AudioSessionIos.setCategory(
-      AudioSessionIos.Category.PlayAndRecord, [AudioSessionIos.CategoryOption.MixWithOthers],
-    )
-    await AudioSessionIos.setMode(AudioSessionIos.Mode.Default)
-    await AudioSessionIos.setActive(true)
 
 
     const { stop, subscribe } = await this.context.transcribeRealtime({
       language: language,
-      maxThreads: 12,
-      useVad: true,
+      maxThreads: 4,
+ //     useVad: true,
       maxLen: 1,
-      realtimeAudioSec: 35,
-      realtimeAudioSliceSec: 5
+      realtimeAudioSec: 60,
+      realtimeAudioSliceSec: 25,
+      audioSessionOnStartIos: {
+        category: AudioSessionIos.Category.PlayAndRecord,
+        options: [
+          AudioSessionIos.CategoryOption.MixWithOthers,
+          AudioSessionIos.CategoryOption.AllowBluetooth,
+        ],
+        mode: AudioSessionIos.Mode.Default,
+      },
+      audioSessionOnStopIos: "restore",
     });
 
     this._stopRecording = stop;
@@ -318,7 +319,7 @@ export class TranscriptionService {
 
       if (data?.result) {
 
-        console.log("data.result", data);
+        console.log(processTime, recordingTime);
 
         if (this._isRecording ) {
           this._transcriptionResult = data.result;

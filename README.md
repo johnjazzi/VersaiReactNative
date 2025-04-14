@@ -54,7 +54,7 @@ yarn ios --device
 
 ```bash
 yarn prebuild --clean
-yarn run:ios --device --configuration Release
+yarn ios --device --configuration Release
 ```
 
 You may need to run in tunnel mode:
