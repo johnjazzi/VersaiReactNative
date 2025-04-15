@@ -17,6 +17,7 @@ export interface TranscriptionServiceState {
   whisperContext: WhisperContext | null;
   transcriptionResult: string;
   isRecording: boolean;
+  initError: string | null;
 }
 
 export function useTranscriptionService() {
@@ -47,7 +48,7 @@ const modelFiles = (modelName: string) => [
 
 export class TranscriptionService {
 
-  private _modelName: string = "ggml-tiny";
+  private _modelName: string = "ggml-small";
   private _exists: boolean = false;
   private _modelSize: number = 0;
   private _isInitialized: boolean = false;
@@ -56,6 +57,7 @@ export class TranscriptionService {
   private _stopRecording: (() => void) | null = null;
   private _isRecording: boolean = false;
   private _recordingLanguage: string = "en";
+  private _initError: string | null = null;
   private listeners: Set<(state: TranscriptionServiceState) => void> =
     new Set();
   private _onTranscriptionCompleteCallback:
@@ -70,15 +72,15 @@ export class TranscriptionService {
 
   async checkIfbundledModelExists() {
     try {
-      if (this._modelName != "ggml-tiny") {
+      if (this._modelName != "ggml-small") {
         throw new Error("bundled model not selected");
       }
       
       // Just use require directly for bundled assets
-      const model = require(`../assets/models/ggml-tiny.bin`);
-      const model_ml_weight = require(`../assets/models/ggml-tiny-encoder.mlmodelc/weights/weight.bin`);
-      const model_ml_model = require(`../assets/models/ggml-tiny-encoder.mlmodelc/model.mil`);
-      const model_ml_coremldata = require(`../assets/models/ggml-tiny-encoder.mlmodelc/coremldata.bin`);
+      const model = require(`../assets/models/ggml-small.bin`);
+      const model_ml_weight = require(`../assets/models/ggml-small-encoder.mlmodelc/weights/weight.bin`);
+      const model_ml_model = require(`../assets/models/ggml-small-encoder.mlmodelc/model.mil`);
+      const model_ml_coremldata = require(`../assets/models/ggml-small-encoder.mlmodelc/coremldata.bin`);
 
       console.log('Models loaded from bundled assets');
       return {
@@ -141,33 +143,51 @@ export class TranscriptionService {
       const {exists, model, model_ml_weight, model_ml_model, model_ml_coremldata} = await this.checkIfbundledModelExists()
 
       if (!exists) {
+        this._initError = "Model not found";
+        this.notifyListeners();
         throw new Error("Model not found");
       }
       this._modelSize = 0;
       this._exists = true;
       setLoadingProgress?.(10);
 
-      this.context = await initWhisper({
-        useFlashAttn: true,
-        useGpu: true,
-        useCoreMLIos: false,
-        filePath: model,
-        coreMLModelAsset:
-          Platform.OS === "ios"
-            ? {
-                filename: `${this._modelName}-encoder.mlmodelc`,
-                assets: [
-                  model_ml_weight,
-                  model_ml_model,
-                  model_ml_coremldata
-                ],
-              }
-            : undefined,
-      });
+      try {
+        this.context = await initWhisper({
+          useFlashAttn: true,
+          useGpu: true,
+          useCoreMLIos: Platform.OS === 'ios' ? true : false,
+          filePath: model,
+          coreMLModelAsset:
+            Platform.OS === "ios"
+              ? {
+                  filename: `${this._modelName}-encoder.mlmodelc`,
+                  assets: [
+                    model_ml_weight,
+                    model_ml_model,
+                    model_ml_coremldata
+                  ],
+                }
+              : undefined,
+        });
 
-      console.log("Whisper context initialized");
+        console.log("Whisper context initialized");
+        this._initError = null;
+      } catch (whisperError) {
+        console.error("Whisper initialization failed:", whisperError);
+        // Try again with different options
+        this.context = await initWhisper({
+          useFlashAttn: false,
+          useGpu: false,
+          useCoreMLIos: false,
+          filePath: model,
+          coreMLModelAsset: undefined
+        });
+        console.log("Whisper context initialized with fallback options");
+        this._initError = null;
+      }
 
       setLoadingProgress?.(80);
+      // The commented section below was causing issues
       // console.log("warming transcription context");
       // await new Promise((resolve) => setTimeout(resolve, 500));
       // const { stop, promise } = this.context.transcribe(
@@ -187,6 +207,8 @@ export class TranscriptionService {
       this.notifyListeners();
     } catch (error: any) {
       console.error("Detailed error:", error);
+      this._initError = error.message || "Unknown initialization error";
+      this.notifyListeners();
       setLoadingStatus?.("Error loading models: " + error.message);
     }
   }
@@ -296,9 +318,8 @@ export class TranscriptionService {
     const { stop, subscribe } = await this.context.transcribeRealtime({
       language: language,
       maxThreads: 4,
- //     useVad: true,
       maxLen: 1,
-      realtimeAudioSec: 60,
+      realtimeAudioSec: 30,
       realtimeAudioSliceSec: 25,
       audioSessionOnStartIos: {
         category: AudioSessionIos.Category.PlayAndRecord,
@@ -324,6 +345,8 @@ export class TranscriptionService {
         if (this._isRecording ) {
           this._transcriptionResult = data.result;
           this.notifyListeners();
+        } else {
+          this._stopRecording?.();
         }
       }
 
@@ -361,6 +384,7 @@ export class TranscriptionService {
       whisperContext: this.context,
       transcriptionResult: this._transcriptionResult,
       isRecording: this._isRecording,
+      initError: this._initError
     };
   }
 

@@ -54,7 +54,7 @@ yarn ios --device
 
 ```bash
 yarn prebuild --clean
-yarn ios --device --configuration Release
+npx expo run:ios --device --configuration Release
 ```
 
 You may need to run in tunnel mode:

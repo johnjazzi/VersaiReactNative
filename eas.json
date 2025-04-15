@@ -8,14 +8,45 @@
       "developmentClient": true,
       "distribution": "internal"
     },
+    "debug": {
+      "distribution": "internal",
+      "developmentClient": true,
+      "ios": {
+        "simulator": false,
+        "buildConfiguration": "Debug",
+        "resourceClass": "m1-medium"
+      }
+    },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "ios": {
+        "resourceClass": "m1-medium",
+        "simulator": false,
+        "buildConfiguration": "Release"
+      }
+    },
+    "testflight-test": {
+      "distribution": "internal",
+      "autoIncrement": true,
+      "ios": {
+        "resourceClass": "m1-medium"
+      }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "distribution": "store",
+      "ios": {
+        "resourceClass": "m1-medium"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "johnjazzinaro@gmail.com",
+        "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "HHMGH49F4L"
+      }
+    }
   }
 }

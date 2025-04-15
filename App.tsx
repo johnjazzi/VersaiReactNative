@@ -156,7 +156,7 @@ export function Main() {
       const newLanguage = recordingLanguage === languageOne ? languageTwo : languageOne;
       setRecordingLanguage(newLanguage);
       transcriptionService.stopTranscription();
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await new Promise(resolve => setTimeout(resolve, 200));
       transcriptionService.startTranscription(newLanguage);
       return;
     }
@@ -270,18 +270,6 @@ export function Main() {
           </View>
 
           <View style={styles.row}>
-            <Button 
-              title="Stop" 
-              onPress={() => transcriptionService.stopTranscription()} 
-              disabled={!isRecording}
-            />
-            <Button 
-              title="Switch Speaker" 
-              onPress={() => switchSpeaker()}
-            />
-          </View>
-
-          <View style={styles.row}>
             <View style={styles.buttonWithIcon}>
               <Text style={styles.languageText}>
                 {langOptions.find(l => l.value === languageOne)?.label || 'Select'}
@@ -297,17 +285,28 @@ export function Main() {
             </View>
             <TouchableOpacity 
               onPress={() => {
-                setRecordingLanguage(languageOne);
-                transcriptionService.startTranscription(languageOne)
+                if (isRecording && recordingLanguage === languageOne) {
+                  transcriptionService.stopTranscription();
+                } else if (isRecording && recordingLanguage !== languageOne) {
+                  switchSpeaker();
+                } else {
+                  setRecordingLanguage(languageOne);
+                  transcriptionService.startTranscription(languageOne);
+                }
               }}
-              disabled={!transcriptionInitialized || !!isRecording}
+              disabled={!transcriptionInitialized}
               style={[
                 styles.micButton,
-                (!transcriptionInitialized || !!isRecording) && styles.micButtonDisabled
+                !transcriptionInitialized && styles.micButtonDisabled,
+                isRecording && recordingLanguage === languageOne && styles.activeRecordingButton
               ]}
             >
               <MaterialIcons 
-                name="mic" 
+                name={
+                  isRecording 
+                    ? (recordingLanguage === languageOne ? "stop" : "swap-vert") 
+                    : "mic"
+                }
                 size={28} 
                 color="white"
               />
@@ -330,17 +329,28 @@ export function Main() {
             </View>
             <TouchableOpacity 
               onPress={() => {
-                setRecordingLanguage(languageTwo);
-                transcriptionService.startTranscription(languageTwo)
+                if (isRecording && recordingLanguage === languageTwo) {
+                  transcriptionService.stopTranscription();
+                } else if (isRecording && recordingLanguage !== languageTwo) {
+                  switchSpeaker();
+                } else {
+                  setRecordingLanguage(languageTwo);
+                  transcriptionService.startTranscription(languageTwo);
+                }
               }}
-              disabled={!transcriptionInitialized || !!isRecording}
+              disabled={!transcriptionInitialized}
               style={[
                 styles.micButton,
-                (!transcriptionInitialized || !!isRecording) && styles.micButtonDisabled
+                !transcriptionInitialized && styles.micButtonDisabled,
+                isRecording && recordingLanguage === languageTwo && styles.activeRecordingButton
               ]}
             >
               <MaterialIcons 
-                name="mic" 
+                name={
+                  isRecording 
+                    ? (recordingLanguage === languageTwo ? "stop" : "swap-vert") 
+                    : "mic"
+                }
                 size={28} 
                 color="white"
               />
@@ -866,6 +876,9 @@ const styles = StyleSheet.create({
   },
   micButtonDisabled: {
     backgroundColor: '#999999',
+  },
+  activeRecordingButton: {
+    backgroundColor: '#FF3B30',
   },
 });
 
